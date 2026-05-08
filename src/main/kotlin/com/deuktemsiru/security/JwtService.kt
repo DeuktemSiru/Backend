@@ -1,7 +1,7 @@
 package com.deuktemsiru.security
 
-import com.deuktemsiru.entity.User
-import com.deuktemsiru.entity.UserRole
+import com.deuktemsiru.entity.Member
+import com.deuktemsiru.entity.MemberRole
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Service
 import java.nio.charset.StandardCharsets
@@ -11,8 +11,8 @@ import javax.crypto.Mac
 import javax.crypto.spec.SecretKeySpec
 
 data class JwtUser(
-    val userId: Long,
-    val role: UserRole,
+    val memberId: Long,
+    val role: MemberRole,
 )
 
 @Service
@@ -23,10 +23,10 @@ class JwtService(
     private val encoder = Base64.getUrlEncoder().withoutPadding()
     private val decoder = Base64.getUrlDecoder()
 
-    fun createToken(user: User): String {
+    fun createToken(member: Member): String {
         val now = Instant.now().epochSecond
         val header = """{"alg":"HS256","typ":"JWT"}"""
-        val payload = """{"sub":"${user.id}","role":"${user.role}","iat":$now,"exp":${now + expirationSeconds}}"""
+        val payload = """{"sub":"${member.memberId}","role":"${member.role}","iat":$now,"exp":${now + expirationSeconds}}"""
         val unsignedToken = "${encode(header)}.${encode(payload)}"
         return "$unsignedToken.${sign(unsignedToken)}"
     }
@@ -39,12 +39,12 @@ class JwtService(
         if (sign(unsignedToken) != parts[2]) return null
 
         val payload = String(decoder.decode(parts[1]), StandardCharsets.UTF_8)
-        val userId = extractString(payload, "sub")?.toLongOrNull() ?: return null
-        val role = extractString(payload, "role")?.let { runCatching { UserRole.valueOf(it) }.getOrNull() } ?: return null
+        val memberId = extractString(payload, "sub")?.toLongOrNull() ?: return null
+        val role = extractString(payload, "role")?.let { runCatching { MemberRole.valueOf(it) }.getOrNull() } ?: return null
         val expiresAt = extractNumber(payload, "exp") ?: return null
         if (Instant.now().epochSecond >= expiresAt) return null
 
-        return JwtUser(userId = userId, role = role)
+        return JwtUser(memberId = memberId, role = role)
     }
 
     private fun encode(value: String): String =

@@ -5,21 +5,23 @@ import org.hibernate.annotations.CreationTimestamp
 import java.time.LocalDateTime
 
 @Entity
-@Table(
-    name = "wishlist",
-    uniqueConstraints = [UniqueConstraint(columnNames = ["member_id", "store_id"])]
-)
-class Wishlist(
+@Table(name = "refresh_token")
+class RefreshToken(
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
-    val wishlistId: Long = 0,
+    val refreshTokenId: Long = 0,
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "member_id", nullable = false)
     var member: Member,
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "store_id", nullable = false)
-    var store: Store,
+    @Column(nullable = false, length = 500)
+    var token: String,
+
+    @Column(nullable = false)
+    var expiredAt: LocalDateTime,
+
+    @Column(nullable = false)
+    var isRevoked: Boolean = false,
 
     @CreationTimestamp
     @Column(nullable = false, updatable = false)
