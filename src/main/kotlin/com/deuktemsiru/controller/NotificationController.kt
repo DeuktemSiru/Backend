@@ -3,10 +3,7 @@ package com.deuktemsiru.controller
 import com.deuktemsiru.dto.NotificationResponse
 import com.deuktemsiru.security.AuthContext
 import com.deuktemsiru.service.NotificationService
-import org.springframework.web.bind.annotation.GetMapping
-import org.springframework.web.bind.annotation.RequestMapping
-import org.springframework.web.bind.annotation.RequestParam
-import org.springframework.web.bind.annotation.RestController
+import org.springframework.web.bind.annotation.*
 
 @RestController
 @RequestMapping("/api/notifications")
@@ -16,8 +13,17 @@ class NotificationController(
 ) {
 
     @GetMapping
-    fun getMyNotifications(@RequestParam userId: Long): List<NotificationResponse> {
-        authContext.requireCurrentUserId(userId)
-        return notificationService.getBuyerNotifications(userId)
+    fun getMyNotifications(@RequestParam memberId: Long): List<NotificationResponse> {
+        authContext.requireCurrentMemberId(memberId)
+        return notificationService.getNotifications(memberId)
+    }
+
+    @PatchMapping("/{notificationId}/read")
+    fun markAsRead(
+        @RequestParam memberId: Long,
+        @PathVariable notificationId: Long,
+    ) {
+        authContext.requireCurrentMemberId(memberId)
+        notificationService.markAsRead(memberId, notificationId)
     }
 }

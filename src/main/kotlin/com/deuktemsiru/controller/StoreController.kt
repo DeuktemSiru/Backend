@@ -12,23 +12,20 @@ class StoreController(
     private val authContext: AuthContext,
 ) {
 
-    // GET /api/stores?category=BAKERY&userId=1
     @GetMapping
     fun getStores(
-        @RequestParam(required = false) category: String?,
         @RequestParam(required = false) userId: Long?,
     ): List<StoreResponse> {
-        userId?.let { authContext.requireCurrentUserId(it) }
-        return storeService.getStores(category, userId)
+        userId?.let { authContext.requireCurrentMemberId(it) }
+        return storeService.getStores(userId)
     }
 
-    // GET /api/stores/{storeId}?userId=1
     @GetMapping("/{storeId}")
     fun getStore(
         @PathVariable storeId: Long,
         @RequestParam(required = false) userId: Long?,
     ): StoreResponse {
-        userId?.let { authContext.requireCurrentUserId(it) }
+        userId?.let { authContext.requireCurrentMemberId(it) }
         return storeService.getStore(storeId, userId)
     }
 }

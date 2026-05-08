@@ -1,28 +1,43 @@
 package com.deuktemsiru.entity
 
 import jakarta.persistence.*
+import org.hibernate.annotations.CreationTimestamp
+import org.hibernate.annotations.UpdateTimestamp
+import java.time.LocalDateTime
 
 @Entity
-@Table(name = "menu_items")
+@Table(name = "menu_item")
 class MenuItem(
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
-    val id: Long = 0,
+    val menuItemId: Long = 0,
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "store_id", nullable = false)
     var store: Store,
 
-    @Column(nullable = false)
+    @Column(nullable = false, length = 100)
     var name: String,
 
-    var emoji: String = "",
-    var imageUrl: String? = null,
-    var originalPrice: Int = 0,
-    var discountedPrice: Int = 0,
-    var discountRate: Int = 0,
-    var remainingItems: Int = 0,
-    var isSoldOut: Boolean = false,
+    @Column(columnDefinition = "TEXT")
+    var description: String? = null,
 
-    // 픽업 가능 시간대 (예: "17:00-18:30")
-    var pickupTimeSlot: String = "",
+    @Column(nullable = false)
+    var originalPrice: Int,
+
+    @Column(length = 500)
+    var imageUrl: String? = null,
+
+    @Column(length = 500)
+    var allergenInfo: String? = null,
+
+    @Column(nullable = false)
+    var isActive: Boolean = true,
+
+    @CreationTimestamp
+    @Column(nullable = false, updatable = false)
+    val createdAt: LocalDateTime = LocalDateTime.now(),
+
+    @UpdateTimestamp
+    @Column(nullable = false)
+    var updatedAt: LocalDateTime = LocalDateTime.now(),
 )

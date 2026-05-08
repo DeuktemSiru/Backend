@@ -2,88 +2,66 @@ package com.deuktemsiru.dto
 
 import com.deuktemsiru.entity.MenuItem
 import com.deuktemsiru.entity.Store
-import com.deuktemsiru.entity.StoreCategory
 
 data class MenuItemResponse(
-    val id: Long,
+    val menuItemId: Long,
     val name: String,
-    val emoji: String,
+    val description: String?,
     val imageUrl: String?,
     val originalPrice: Int,
-    val discountedPrice: Int,
-    val discountRate: Int,
-    val remainingItems: Int,
-    val isSoldOut: Boolean,
-    val pickupTimeSlot: String,
+    val allergenInfo: String?,
+    val isActive: Boolean,
 ) {
     companion object {
         fun from(item: MenuItem) = MenuItemResponse(
-            id = item.id,
+            menuItemId = item.menuItemId,
             name = item.name,
-            emoji = item.emoji,
+            description = item.description,
             imageUrl = item.imageUrl,
             originalPrice = item.originalPrice,
-            discountedPrice = item.discountedPrice,
-            discountRate = item.discountRate,
-            remainingItems = item.remainingItems,
-            isSoldOut = item.isSoldOut,
-            pickupTimeSlot = item.pickupTimeSlot,
+            allergenInfo = item.allergenInfo,
+            isActive = item.isActive,
         )
     }
 }
 
 data class StoreResponse(
-    val id: Long,
+    val storeId: Long,
     val name: String,
-    val category: StoreCategory,
-    val emoji: String,
-    val rating: Float,
+    val description: String?,
     val address: String,
-    val phone: String,
     val latitude: Double,
     val longitude: Double,
-    val closingTime: String,
+    val phone: String?,
+    val thumbnailUrl: String?,
+    val ratingAvg: Double,
+    val reviewCount: Int,
+    val isActive: Boolean,
     val isWishlisted: Boolean,
-    val menus: List<MenuItemResponse>,
+    val categories: List<String>,
+    val menuItems: List<MenuItemResponse>,
 ) {
     companion object {
         fun from(store: Store, isWishlisted: Boolean = false) = StoreResponse(
-            id = store.id,
+            storeId = store.storeId,
             name = store.name,
-            category = store.category,
-            emoji = store.emoji,
-            rating = store.rating,
+            description = store.description,
             address = store.address,
-            phone = store.phone,
             latitude = store.latitude,
             longitude = store.longitude,
-            closingTime = store.closingTime,
+            phone = store.phone,
+            thumbnailUrl = store.thumbnailUrl,
+            ratingAvg = store.ratingAvg,
+            reviewCount = store.reviewCount,
+            isActive = store.isActive,
             isWishlisted = isWishlisted,
-            menus = store.menuItems.map { MenuItemResponse.from(it) },
+            categories = store.categories.map { it.category.name },
+            menuItems = store.menuItems.map { MenuItemResponse.from(it) },
         )
     }
 }
 
-data class MenuItemRequest(
-    val name: String,
-    val emoji: String,
-    val imageUrl: String? = null,
-    val originalPrice: Int,
-    val discountRate: Int,
-    val quantity: Int,
-    val pickupTimeSlot: String,
-)
-
-data class MenuItemUpdateRequest(
-    val remainingItems: Int? = null,
-    val isSoldOut: Boolean? = null,
-    val discountRate: Int? = null,
-    val pickupTimeSlot: String? = null,
-    val imageUrl: String? = null,
-)
-
 data class UpdateStoreRequest(
-    val address: String? = null,
+    val description: String? = null,
     val phone: String? = null,
-    val closingTime: String? = null,
 )
