@@ -18,6 +18,12 @@ class DataInitializer(
 ) : ApplicationRunner {
 
     override fun run(args: ApplicationArguments) {
+        // 이미 데이터가 있으면 초기화 건너뜀 (서버 재시작 시 중복 방지)
+        if (memberRepository.count() > 0) {
+            println("=== 이미 샘플 데이터가 존재합니다. 초기화를 건너뜁니다. ===")
+            return
+        }
+
         val sellers = listOf(
             Member(provider = MemberProvider.KAKAO, providerId = "kakao_seller_1", email = "bakery@test.com", name = "영희", nickname = "영희네베이커리", role = MemberRole.SELLER),
             Member(provider = MemberProvider.KAKAO, providerId = "kakao_seller_2", email = "cafe@test.com",   name = "민준", nickname = "커피향기",       role = MemberRole.SELLER),

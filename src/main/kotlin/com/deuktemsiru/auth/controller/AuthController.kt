@@ -58,9 +58,9 @@ class AuthController(
      * Authorization: Bearer {accessToken} 필요
      */
     @PostMapping("/logout")
-    fun logout(): ApiResponse<Nothing> {
+    fun logout(): ApiResponse<Unit> {
         val memberId = authContext.getCurrentMemberId()
         authService.logout(memberId)
-        return ApiResponse.success(null, "로그아웃 성공")
+        return ApiResponse.success(Unit, "로그아웃 성공")
     }
 }

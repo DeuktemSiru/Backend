@@ -1,13 +1,18 @@
 package com.deuktemsiru.service
 
+import com.deuktemsiru.dto.BuyerStoreResponse
 import com.deuktemsiru.dto.StoreResponse
 import com.deuktemsiru.dto.UpdateStoreRequest
+import com.deuktemsiru.entity.CategoryType
+import com.deuktemsiru.entity.ProductStatus
 import com.deuktemsiru.entity.Wishlist
 import com.deuktemsiru.repository.MenuItemRepository
+import com.deuktemsiru.repository.ProductRepository
 import com.deuktemsiru.repository.StoreRepository
 import com.deuktemsiru.repository.WishlistRepository
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import java.time.LocalDate
 
 @Service
 @Transactional(readOnly = true)
@@ -15,6 +20,7 @@ class StoreService(
     private val storeRepository: StoreRepository,
     private val menuItemRepository: MenuItemRepository,
     private val wishlistRepository: WishlistRepository,
+    private val productRepository: ProductRepository,
     private val memberService: MemberService,
 ) {
 
@@ -74,4 +80,37 @@ class StoreService(
 
     fun findStore(storeId: Long) =
         storeRepository.findById(storeId).orElseThrow { NoSuchElementException("가게를 찾을 수 없습니다.") }
+
+    // ── 구매자 앱 전용 ─────────────────────────────────────────
+
+    fun getStoresBuyer(category: String?, memberId: Long): List<BuyerStoreResponse> {
+        val categoryType = category?.let { runCatching { CategoryType.valueOf(it) }.getOrNull() }
+        val stores = if (categoryType != null) storeRepository.findByCategory(categoryType) else storeRepository.findAll()
+        val today = LocalDate.now()
+        val member = memberService.findMember(memberId)
+        val wishlistedIds = wishlistRepository.findByMember(member).map { it.store.storeId }.toSet()
+        return stores.map { store ->
+            val products = productRepository.findByStoreAndAvailableDateAndStatus(store, today, ProductStatus.AVAILABLE)
+            BuyerStoreResponse.from(store, products, store.storeId in wishlistedIds)
+        }
+    }
+
+    fun getStoreBuyer(storeId: Long, memberId: Long): BuyerStoreResponse {
+        val store = findStore(storeId)
+        val today = LocalDate.now()
+        val member = memberService.findMember(memberId)
+        val isWishlisted = wishlistRepository.existsByMemberAndStore(member, store)
+        val products = productRepository.findByStoreAndAvailableDateAndStatus(store, today, ProductStatus.AVAILABLE)
+        return BuyerStoreResponse.from(store, products, isWishlisted)
+    }
+
+    fun getWishlistBuyer(memberId: Long): List<BuyerStoreResponse> {
+        val member = memberService.findMember(memberId)
+        val today = LocalDate.now()
+        return wishlistRepository.findByMember(member).map { wishlist ->
+            val store = wishlist.store
+            val products = productRepository.findByStoreAndAvailableDateAndStatus(store, today, ProductStatus.AVAILABLE)
+            BuyerStoreResponse.from(store, products, true)
+        }
+    }
 }
