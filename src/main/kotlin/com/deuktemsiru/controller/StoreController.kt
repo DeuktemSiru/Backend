@@ -1,12 +1,13 @@
 package com.deuktemsiru.controller
 
-import com.deuktemsiru.dto.StoreResponse
+import com.deuktemsiru.common.ApiResponse
+import com.deuktemsiru.dto.BuyerStoreResponse
 import com.deuktemsiru.security.AuthContext
 import com.deuktemsiru.service.StoreService
 import org.springframework.web.bind.annotation.*
 
 @RestController
-@RequestMapping("/api/stores")
+@RequestMapping("/api/v1/stores")
 class StoreController(
     private val storeService: StoreService,
     private val authContext: AuthContext,
@@ -14,18 +15,17 @@ class StoreController(
 
     @GetMapping
     fun getStores(
-        @RequestParam(required = false) userId: Long?,
-    ): List<StoreResponse> {
-        userId?.let { authContext.requireCurrentMemberId(it) }
-        return storeService.getStores(userId)
+        @RequestParam(required = false) category: String?,
+    ): ApiResponse<List<BuyerStoreResponse>> {
+        val memberId = authContext.getCurrentMemberId()
+        return ApiResponse.success(storeService.getStoresBuyer(category, memberId))
     }
 
     @GetMapping("/{storeId}")
     fun getStore(
         @PathVariable storeId: Long,
-        @RequestParam(required = false) userId: Long?,
-    ): StoreResponse {
-        userId?.let { authContext.requireCurrentMemberId(it) }
-        return storeService.getStore(storeId, userId)
+    ): ApiResponse<BuyerStoreResponse> {
+        val memberId = authContext.getCurrentMemberId()
+        return ApiResponse.success(storeService.getStoreBuyer(storeId, memberId))
     }
 }
