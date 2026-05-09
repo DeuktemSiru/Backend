@@ -10,41 +10,69 @@ import java.util.Base64
 import javax.crypto.Mac
 import javax.crypto.spec.SecretKeySpec
 
-data class JwtUser(
-    val memberId: Long,
-    val role: MemberRole,
-)
-
 @Service
 class JwtService(
-    @Value("\${app.jwt.secret:deuktemsiru-dev-secret-change-me}") private val secret: String,
-    @Value("\${app.jwt.expiration-seconds:86400}") private val expirationSeconds: Long,
+    @Value("\${app.jwt.secret}") private val secret: String,
+    @Value("\${app.jwt.access-token-expiration-seconds:1800}") val accessTokenExpirationSeconds: Long,
+    @Value("\${app.jwt.refresh-token-expiration-seconds:1209600}") val refreshTokenExpirationSeconds: Long,
 ) {
     private val encoder = Base64.getUrlEncoder().withoutPadding()
     private val decoder = Base64.getUrlDecoder()
 
-    fun createToken(member: Member): String {
+    private enum class TokenType { ACCESS, REFRESH }
+
+    // ──────────────────────── 토큰 생성 ────────────────────────
+
+    fun createAccessToken(member: Member): String =
+        buildToken(member, TokenType.ACCESS, accessTokenExpirationSeconds)
+
+    fun createRefreshToken(member: Member): String =
+        buildToken(member, TokenType.REFRESH, refreshTokenExpirationSeconds)
+
+    private fun buildToken(member: Member, type: TokenType, expirationSeconds: Long): String {
         val now = Instant.now().epochSecond
         val header = """{"alg":"HS256","typ":"JWT"}"""
-        val payload = """{"sub":"${member.memberId}","role":"${member.role}","iat":$now,"exp":${now + expirationSeconds}}"""
-        val unsignedToken = "${encode(header)}.${encode(payload)}"
-        return "$unsignedToken.${sign(unsignedToken)}"
+        val payload =
+            """{"sub":"${member.memberId}","role":"${member.role}","type":"$type","iat":$now,"exp":${now + expirationSeconds}}"""
+        val unsigned = "${encode(header)}.${encode(payload)}"
+        return "$unsigned.${sign(unsigned)}"
     }
 
+    // ──────────────────────── 토큰 검증 ────────────────────────
+
+    /** Authorization 헤더의 Access Token 검증 → JwtUser 반환 */
     fun validate(token: String): JwtUser? {
+        val payload = verifySignatureAndExpiry(token) ?: return null
+        if (extractString(payload, "type") != TokenType.ACCESS.name) return null
+
+        val memberId = extractString(payload, "sub")?.toLongOrNull() ?: return null
+        val role = extractString(payload, "role")
+            ?.let { runCatching { MemberRole.valueOf(it) }.getOrNull() } ?: return null
+
+        return JwtUser(memberId = memberId, role = role)
+    }
+
+    /** Refresh Token 검증 → memberId 반환 */
+    fun validateRefreshToken(token: String): Long? {
+        val payload = verifySignatureAndExpiry(token) ?: return null
+        if (extractString(payload, "type") != TokenType.REFRESH.name) return null
+        return extractString(payload, "sub")?.toLongOrNull()
+    }
+
+    // ──────────────────────── 내부 유틸 ────────────────────────
+
+    private fun verifySignatureAndExpiry(token: String): String? {
         val parts = token.split(".")
         if (parts.size != 3) return null
 
-        val unsignedToken = "${parts[0]}.${parts[1]}"
-        if (sign(unsignedToken) != parts[2]) return null
+        val unsigned = "${parts[0]}.${parts[1]}"
+        if (sign(unsigned) != parts[2]) return null
 
         val payload = String(decoder.decode(parts[1]), StandardCharsets.UTF_8)
-        val memberId = extractString(payload, "sub")?.toLongOrNull() ?: return null
-        val role = extractString(payload, "role")?.let { runCatching { MemberRole.valueOf(it) }.getOrNull() } ?: return null
         val expiresAt = extractNumber(payload, "exp") ?: return null
         if (Instant.now().epochSecond >= expiresAt) return null
 
-        return JwtUser(memberId = memberId, role = role)
+        return payload
     }
 
     private fun encode(value: String): String =
@@ -56,13 +84,9 @@ class JwtService(
         return encoder.encodeToString(mac.doFinal(value.toByteArray(StandardCharsets.UTF_8)))
     }
 
-    private fun extractString(json: String, key: String): String? {
-        val match = Regex(""""$key"\s*:\s*"([^"]+)"""").find(json)
-        return match?.groupValues?.get(1)
-    }
+    private fun extractString(json: String, key: String): String? =
+        Regex(""""$key"\s*:\s*"([^"]+)"""").find(json)?.groupValues?.get(1)
 
-    private fun extractNumber(json: String, key: String): Long? {
-        val match = Regex(""""$key"\s*:\s*(\d+)""").find(json)
-        return match?.groupValues?.get(1)?.toLongOrNull()
-    }
+    private fun extractNumber(json: String, key: String): Long? =
+        Regex(""""$key"\s*:\s*(\d+)""").find(json)?.groupValues?.get(1)?.toLongOrNull()
 }
