@@ -1,15 +1,13 @@
 package com.deuktemsiru
 
 import com.deuktemsiru.dto.CreateOrderRequest
-import com.deuktemsiru.dto.MenuItemUpdateRequest
 import com.deuktemsiru.dto.OrderItemRequest
-import com.deuktemsiru.dto.SendNotificationRequest
 import com.deuktemsiru.dto.UpdateOrderStatusRequest
 import com.deuktemsiru.entity.OrderStatus
-import com.deuktemsiru.repository.MenuItemRepository
+import com.deuktemsiru.entity.ProductStatus
+import com.deuktemsiru.repository.MemberRepository
+import com.deuktemsiru.repository.ProductRepository
 import com.deuktemsiru.repository.StoreRepository
-import com.deuktemsiru.repository.UserRepository
-import com.deuktemsiru.service.NotificationService
 import com.deuktemsiru.service.OrderService
 import com.deuktemsiru.service.StoreService
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -32,171 +30,131 @@ class DeuktemsiruApplicationTests {
     private lateinit var storeService: StoreService
 
     @Autowired
-    private lateinit var notificationService: NotificationService
-
-    @Autowired
-    private lateinit var userRepository: UserRepository
+    private lateinit var memberRepository: MemberRepository
 
     @Autowired
     private lateinit var storeRepository: StoreRepository
 
     @Autowired
-    private lateinit var menuItemRepository: MenuItemRepository
+    private lateinit var productRepository: ProductRepository
 
     @Test
     fun contextLoads() {
     }
 
     @Test
-    fun `order creation rejects menu from another store`() {
-        val buyer = userRepository.findByEmail("buyer@test.com").get()
+    fun `order creation rejects product from another store`() {
+        val buyer = memberRepository.findByEmail("buyer@test.com").get()
         val stores = storeRepository.findAll()
         val store = stores[0]
-        val otherStoreMenu = stores[1].menuItems.first()
+        val otherStoreProduct = productRepository.findByStore(stores[1]).first()
 
         val error = assertThrows(IllegalArgumentException::class.java) {
             orderService.createOrder(
-                buyer.id,
+                buyer.memberId,
                 CreateOrderRequest(
-                    storeId = store.id,
-                    items = listOf(OrderItemRequest(menuItemId = otherStoreMenu.id, quantity = 1)),
-                    pickupTime = "18:00",
+                    storeId = store.storeId,
+                    items = listOf(OrderItemRequest(productId = otherStoreProduct.productId, quantity = 1)),
                 ),
             )
         }
 
-        assertEquals("선택한 가게의 메뉴만 주문할 수 있습니다.", error.message)
+        assertEquals("선택한 가게의 상품만 주문할 수 있습니다.", error.message)
     }
 
     @Test
     fun `order creation rejects invalid or excessive quantity without changing stock`() {
-        val buyer = userRepository.findByEmail("buyer@test.com").get()
+        val buyer = memberRepository.findByEmail("buyer@test.com").get()
         val store = storeRepository.findAll().first()
-        val menu = store.menuItems.first()
-        val originalStock = menu.remainingItems
+        val product = productRepository.findByStore(store).first()
+        val originalStock = product.quantityRemaining
 
         assertThrows(IllegalArgumentException::class.java) {
             orderService.createOrder(
-                buyer.id,
+                buyer.memberId,
                 CreateOrderRequest(
-                    storeId = store.id,
-                    items = listOf(OrderItemRequest(menuItemId = menu.id, quantity = 0)),
-                    pickupTime = "18:00",
+                    storeId = store.storeId,
+                    items = listOf(OrderItemRequest(productId = product.productId, quantity = 0)),
                 ),
             )
         }
 
         assertThrows(IllegalArgumentException::class.java) {
             orderService.createOrder(
-                buyer.id,
+                buyer.memberId,
                 CreateOrderRequest(
-                    storeId = store.id,
-                    items = listOf(OrderItemRequest(menuItemId = menu.id, quantity = originalStock + 1)),
-                    pickupTime = "18:00",
+                    storeId = store.storeId,
+                    items = listOf(OrderItemRequest(productId = product.productId, quantity = originalStock + 1)),
                 ),
             )
         }
 
-        val reloaded = menuItemRepository.findById(menu.id).get()
-        assertEquals(originalStock, reloaded.remainingItems)
-        assertFalse(reloaded.isSoldOut)
+        val reloaded = productRepository.findById(product.productId).get()
+        assertEquals(originalStock, reloaded.quantityRemaining)
+        assertEquals(ProductStatus.AVAILABLE, reloaded.status)
     }
 
     @Test
     fun `order creation decrements stock and marks sold out`() {
-        val buyer = userRepository.findByEmail("buyer@test.com").get()
+        val buyer = memberRepository.findByEmail("buyer@test.com").get()
         val store = storeRepository.findAll().first()
-        val menu = store.menuItems.first()
+        val product = productRepository.findByStore(store).first()
 
         val order = orderService.createOrder(
-            buyer.id,
+            buyer.memberId,
             CreateOrderRequest(
-                storeId = store.id,
-                items = listOf(OrderItemRequest(menuItemId = menu.id, quantity = menu.remainingItems)),
-                pickupTime = "18:00",
+                storeId = store.storeId,
+                items = listOf(OrderItemRequest(productId = product.productId, quantity = product.quantityRemaining)),
             ),
         )
 
-        val reloaded = menuItemRepository.findById(menu.id).get()
-        assertEquals(OrderStatus.NEW, order.status)
-        assertEquals(0, reloaded.remainingItems)
-        assertTrue(reloaded.isSoldOut)
+        val reloaded = productRepository.findById(product.productId).get()
+        assertEquals(OrderStatus.PENDING, order.status)
+        assertEquals(0, reloaded.quantityRemaining)
+        assertEquals(ProductStatus.SOLD_OUT, reloaded.status)
     }
 
     @Test
     fun `seller order status follows allowed transitions`() {
-        val buyer = userRepository.findByEmail("buyer@test.com").get()
-        val seller = userRepository.findByEmail("bakery@test.com").get()
+        val buyer = memberRepository.findByEmail("buyer@test.com").get()
+        val seller = memberRepository.findByEmail("bakery@test.com").get()
         val store = storeRepository.findByOwner(seller).get()
-        val menu = store.menuItems.first()
+        val product = productRepository.findByStore(store).first()
         val order = orderService.createOrder(
-            buyer.id,
+            buyer.memberId,
             CreateOrderRequest(
-                storeId = store.id,
-                items = listOf(OrderItemRequest(menuItemId = menu.id, quantity = 1)),
-                pickupTime = "18:00",
+                storeId = store.storeId,
+                items = listOf(OrderItemRequest(productId = product.productId, quantity = 1)),
             ),
         )
 
         assertThrows(IllegalArgumentException::class.java) {
-            orderService.updateOrderStatus(seller.id, order.id, UpdateOrderStatusRequest(OrderStatus.COMPLETED))
+            orderService.updateOrderStatus(seller.memberId, order.orderId, UpdateOrderStatusRequest(OrderStatus.PICKED_UP))
         }
 
         assertEquals(
-            OrderStatus.PREPARING,
-            orderService.updateOrderStatus(seller.id, order.id, UpdateOrderStatusRequest(OrderStatus.PREPARING)).status,
+            OrderStatus.CONFIRMED,
+            orderService.updateOrderStatus(seller.memberId, order.orderId, UpdateOrderStatusRequest(OrderStatus.CONFIRMED)).status,
         )
         assertEquals(
-            OrderStatus.READY,
-            orderService.updateOrderStatus(seller.id, order.id, UpdateOrderStatusRequest(OrderStatus.READY)).status,
-        )
-        assertEquals(
-            OrderStatus.COMPLETED,
-            orderService.updateOrderStatus(seller.id, order.id, UpdateOrderStatusRequest(OrderStatus.COMPLETED)).status,
+            OrderStatus.PICKED_UP,
+            orderService.updateOrderStatus(seller.memberId, order.orderId, UpdateOrderStatusRequest(OrderStatus.PICKED_UP)).status,
         )
 
         assertThrows(IllegalArgumentException::class.java) {
-            orderService.updateOrderStatus(seller.id, order.id, UpdateOrderStatusRequest(OrderStatus.REJECTED))
+            orderService.updateOrderStatus(seller.memberId, order.orderId, UpdateOrderStatusRequest(OrderStatus.CANCELLED))
         }
     }
 
     @Test
-    fun `buyer notification list contains notifications from wishlisted stores`() {
-        val buyer = userRepository.findByEmail("buyer@test.com").get()
-        val seller = userRepository.findByEmail("bakery@test.com").get()
-        val store = storeRepository.findByOwner(seller).get()
+    fun `buyer can toggle wishlist`() {
+        val buyer = memberRepository.findByEmail("buyer@test.com").get()
+        val store = storeRepository.findAll().first()
 
-        assertTrue(storeService.toggleWishlist(buyer.id, store.id))
+        assertTrue(storeService.toggleWishlist(buyer.memberId, store.storeId))
+        assertTrue(storeService.getWishlist(buyer.memberId).any { it.storeId == store.storeId })
 
-        val sent = notificationService.send(seller.id, SendNotificationRequest("오늘 마감 특가가 열렸어요"))
-        val notifications = notificationService.getBuyerNotifications(buyer.id)
-
-        assertEquals(1, sent.recipientCount)
-        assertTrue(notifications.any { it.id == sent.id && it.storeId == store.id })
-    }
-
-    @Test
-    fun `seller can update and delete own menu`() {
-        val seller = userRepository.findByEmail("bakery@test.com").get()
-        val store = storeRepository.findByOwner(seller).get()
-        val menu = store.menuItems.first()
-
-        val updated = storeService.updateMenuItem(
-            seller.id,
-            menu.id,
-            MenuItemUpdateRequest(
-                remainingItems = 2,
-                discountRate = 50,
-                pickupTimeSlot = "18:00-19:00",
-            ),
-        )
-
-        assertEquals(2, updated.remainingItems)
-        assertEquals(50, updated.discountRate)
-        assertEquals("18:00-19:00", updated.pickupTimeSlot)
-
-        storeService.deleteMenuItem(seller.id, menu.id)
-
-        assertFalse(store.menuItems.any { it.id == menu.id })
+        assertFalse(storeService.toggleWishlist(buyer.memberId, store.storeId))
+        assertFalse(storeService.getWishlist(buyer.memberId).any { it.storeId == store.storeId })
     }
 }

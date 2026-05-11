@@ -2,6 +2,7 @@ package com.deuktemsiru.service
 
 import com.deuktemsiru.dto.CreateOrderRequest
 import com.deuktemsiru.dto.DailySales
+import com.deuktemsiru.dto.OrderItemRequest
 import com.deuktemsiru.dto.OrderResponse
 import com.deuktemsiru.dto.SalesResponse
 import com.deuktemsiru.dto.TopProduct
@@ -10,7 +11,9 @@ import com.deuktemsiru.entity.MemberRole
 import com.deuktemsiru.entity.OrderItem
 import com.deuktemsiru.entity.OrderStatus
 import com.deuktemsiru.entity.Orders
+import com.deuktemsiru.entity.Product
 import com.deuktemsiru.entity.ProductStatus
+import com.deuktemsiru.entity.Store
 import com.deuktemsiru.repository.OrderRepository
 import com.deuktemsiru.repository.ProductRepository
 import com.deuktemsiru.repository.StoreRepository
@@ -37,31 +40,14 @@ class OrderService(
         require(req.items.isNotEmpty()) { "주문 항목이 없습니다." }
 
         val store = storeService.findStore(req.storeId)
-
         val order = Orders(
             consumer = consumer,
             store = store,
             pickupCode = generatePickupCode(),
         )
 
-        var total = 0
-        for (itemReq in req.items) {
-            require(itemReq.quantity > 0) { "주문 수량은 1개 이상이어야 합니다." }
-
-            val product = productRepository.findByIdForUpdate(itemReq.productId)
-                .orElseThrow { NoSuchElementException("상품을 찾을 수 없습니다.") }
-            require(product.store.storeId == store.storeId) { "선택한 가게의 상품만 주문할 수 있습니다." }
-            require(product.status == ProductStatus.AVAILABLE) { "${product.name}은(는) 구매 불가 상태입니다." }
-            require(product.quantityRemaining >= itemReq.quantity) { "${product.name} 재고가 부족합니다." }
-
-            product.quantityRemaining -= itemReq.quantity
-            if (product.quantityRemaining == 0) product.status = ProductStatus.SOLD_OUT
-
-            val lineTotal = product.discountPrice * itemReq.quantity
-            total += lineTotal
-            order.items.add(OrderItem(order = order, product = product, quantity = itemReq.quantity, unitPrice = product.discountPrice))
-        }
-        order.totalPrice = total
+        order.items += req.items.map { createOrderItem(order, store, it) }
+        order.totalPrice = order.items.sumOf { it.unitPrice * it.quantity }
 
         return OrderResponse.from(orderRepository.save(order))
     }
@@ -110,74 +96,98 @@ class OrderService(
 
         val today = LocalDate.now()
         val todayOrders = allOrders.filter { it.createdAt.toLocalDate() == today }
-        val todaySales = todayOrders.sumOf { it.totalPrice }
-
-        val salesData: List<DailySales> = when (period) {
-            "monthly" -> {
-                val targetMonth = today.minusMonths(offset.toLong())
-                val firstDay = targetMonth.withDayOfMonth(1)
-                val lastDay = targetMonth.with(TemporalAdjusters.lastDayOfMonth())
-                val result = mutableListOf<DailySales>()
-                var weekStart = firstDay
-                var weekNum = 1
-                while (!weekStart.isAfter(lastDay)) {
-                    val weekEnd = minOf(weekStart.plusDays(6), lastDay)
-                    val amount = allOrders
-                        .filter {
-                            val d = it.createdAt.toLocalDate()
-                            !d.isBefore(weekStart) && !d.isAfter(weekEnd)
-                        }
-                        .sumOf { it.totalPrice }
-                    result.add(DailySales("${weekNum}주", amount))
-                    weekStart = weekStart.plusDays(7)
-                    weekNum++
-                }
-                result
-            }
-            "yearly" -> {
-                val targetYear = today.year - offset
-                (1..12).map { month ->
-                    val amount = allOrders
-                        .filter {
-                            val d = it.createdAt.toLocalDate()
-                            d.year == targetYear && d.monthValue == month
-                        }
-                        .sumOf { it.totalPrice }
-                    DailySales("${month}월", amount)
-                }
-            }
-            else -> {
-                val endDay = today.minusDays((offset * 7).toLong())
-                val startDay = endDay.minusDays(6)
-                val formatter = DateTimeFormatter.ofPattern("MM/dd")
-                (0..6).map { i ->
-                    val date = startDay.plusDays(i.toLong())
-                    val amount = allOrders
-                        .filter { it.createdAt.toLocalDate() == date }
-                        .sumOf { it.totalPrice }
-                    DailySales(date.format(formatter), amount)
-                }
-            }
-        }
-
-        val productCount = mutableMapOf<Long, Pair<String, Int>>()
-        allOrders.flatMap { it.items }.forEach { item ->
-            val id = item.product.productId
-            val (name, count) = productCount.getOrDefault(id, Pair(item.product.name, 0))
-            productCount[id] = Pair(name, count + item.quantity)
-        }
-        val topProducts = productCount.values
-            .sortedByDescending { it.second }
-            .take(3)
-            .map { (name, count) -> TopProduct(name, count) }
 
         return SalesResponse(
-            todaySales = todaySales,
+            todaySales = todayOrders.sumOf { it.totalPrice },
             todayOrderCount = todayOrders.size,
-            salesData = salesData,
-            topProducts = topProducts,
+            salesData = salesData(period, offset, today, allOrders),
+            topProducts = topProducts(allOrders),
         )
     }
+
+    private fun createOrderItem(
+        order: Orders,
+        store: Store,
+        itemReq: OrderItemRequest,
+    ): OrderItem {
+        require(itemReq.quantity > 0) { "주문 수량은 1개 이상이어야 합니다." }
+
+        val product = productRepository.findByIdForUpdate(itemReq.productId)
+            .orElseThrow { NoSuchElementException("상품을 찾을 수 없습니다.") }
+        validateProduct(product, store, itemReq.quantity)
+
+        product.quantityRemaining -= itemReq.quantity
+        if (product.quantityRemaining == 0) product.status = ProductStatus.SOLD_OUT
+
+        return OrderItem(
+            order = order,
+            product = product,
+            quantity = itemReq.quantity,
+            unitPrice = product.discountPrice,
+        )
+    }
+
+    private fun validateProduct(product: Product, store: Store, quantity: Int) {
+        require(product.store.storeId == store.storeId) { "선택한 가게의 상품만 주문할 수 있습니다." }
+        require(product.status == ProductStatus.AVAILABLE) { "${product.name}은(는) 구매 불가 상태입니다." }
+        require(product.quantityRemaining >= quantity) { "${product.name} 재고가 부족합니다." }
+    }
+
+    private fun salesData(
+        period: String,
+        offset: Int,
+        today: LocalDate,
+        orders: List<Orders>,
+    ): List<DailySales> = when (period) {
+        "monthly" -> monthlySales(today.minusMonths(offset.toLong()), orders)
+        "yearly" -> yearlySales(today.year - offset, orders)
+        else -> weeklySales(today.minusDays((offset * 7).toLong()), orders)
+    }
+
+    private fun monthlySales(targetMonth: LocalDate, orders: List<Orders>): List<DailySales> {
+        val firstDay = targetMonth.withDayOfMonth(1)
+        val lastDay = targetMonth.with(TemporalAdjusters.lastDayOfMonth())
+        return generateSequence(firstDay) { it.plusDays(7) }
+            .takeWhile { !it.isAfter(lastDay) }
+            .mapIndexed { index, weekStart ->
+                val weekEnd = minOf(weekStart.plusDays(6), lastDay)
+                DailySales("${index + 1}주", orders.sumBetween(weekStart, weekEnd))
+            }
+            .toList()
+    }
+
+    private fun yearlySales(year: Int, orders: List<Orders>): List<DailySales> =
+        (1..12).map { month ->
+            DailySales("${month}월", orders.sumOf { order ->
+                if (order.createdAt.year == year && order.createdAt.monthValue == month) order.totalPrice else 0
+            })
+        }
+
+    private fun weeklySales(endDay: LocalDate, orders: List<Orders>): List<DailySales> {
+        val startDay = endDay.minusDays(6)
+        val formatter = DateTimeFormatter.ofPattern("MM/dd")
+        return (0..6).map { i ->
+            val date = startDay.plusDays(i.toLong())
+            DailySales(date.format(formatter), orders.sumOn(date))
+        }
+    }
+
+    private fun List<Orders>.sumOn(date: LocalDate): Int =
+        sumOf { if (it.createdAt.toLocalDate() == date) it.totalPrice else 0 }
+
+    private fun List<Orders>.sumBetween(start: LocalDate, end: LocalDate): Int =
+        sumOf {
+            val date = it.createdAt.toLocalDate()
+            if (!date.isBefore(start) && !date.isAfter(end)) it.totalPrice else 0
+        }
+
+    private fun topProducts(orders: List<Orders>): List<TopProduct> =
+        orders.flatMap { it.items }
+            .groupBy { it.product.productId }
+            .values
+            .map { items -> TopProduct(items.first().product.name, items.sumOf { it.quantity }) }
+            .sortedByDescending { it.count }
+            .take(3)
 
     private fun generatePickupCode(): String {
         val chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
