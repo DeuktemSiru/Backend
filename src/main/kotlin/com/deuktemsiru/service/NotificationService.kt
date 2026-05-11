@@ -1,6 +1,7 @@
 package com.deuktemsiru.service
 
 import com.deuktemsiru.dto.NotificationResponse
+import com.deuktemsiru.entity.Notification
 import com.deuktemsiru.repository.NotificationRepository
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -13,9 +14,12 @@ class NotificationService(
 ) {
 
     fun getNotifications(memberId: Long): List<NotificationResponse> {
+        return getNotificationEntities(memberId).map { NotificationResponse.from(it) }
+    }
+
+    fun getNotificationEntities(memberId: Long): List<Notification> {
         val member = memberService.findMember(memberId)
         return notificationRepository.findByMemberOrderByCreatedAtDesc(member)
-            .map { NotificationResponse.from(it) }
     }
 
     @Transactional

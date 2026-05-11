@@ -1,36 +1,38 @@
 package com.deuktemsiru.controller
 
+import com.deuktemsiru.common.ApiResponse
+import com.deuktemsiru.dto.AppOrderResponse
 import com.deuktemsiru.dto.CreateOrderRequest
-import com.deuktemsiru.dto.OrderResponse
 import com.deuktemsiru.security.AuthContext
 import com.deuktemsiru.service.OrderService
 import org.springframework.http.HttpStatus
 import org.springframework.web.bind.annotation.*
 
 @RestController
-@RequestMapping("/api")
+@RequestMapping("/api/v1/orders")
 class OrderController(
     private val orderService: OrderService,
     private val authContext: AuthContext,
 ) {
 
-    @PostMapping("/orders")
+    @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
-    fun createOrder(
-        @RequestParam consumerId: Long,
+    fun createOrderV1(
         @RequestBody req: CreateOrderRequest,
-    ): OrderResponse {
-        authContext.requireCurrentMemberId(consumerId)
-        return orderService.createOrder(consumerId, req)
+    ): ApiResponse<AppOrderResponse> {
+        val consumerId = authContext.getCurrentMemberId()
+        return ApiResponse.created(AppOrderResponse.from(orderService.createOrderEntity(consumerId, req)))
     }
 
-    @GetMapping("/orders")
-    fun getMyOrders(@RequestParam consumerId: Long): List<OrderResponse> {
-        authContext.requireCurrentMemberId(consumerId)
-        return orderService.getMyOrders(consumerId)
+    @GetMapping
+    fun getMyOrdersV1(): ApiResponse<List<AppOrderResponse>> {
+        val consumerId = authContext.getCurrentMemberId()
+        return ApiResponse.success(orderService.getMyOrderEntities(consumerId).map { AppOrderResponse.from(it) })
     }
 
-    @GetMapping("/orders/{orderId}")
-    fun getOrder(@PathVariable orderId: Long): OrderResponse =
-        orderService.getOrder(orderId)
+    @GetMapping("/{orderId}")
+    fun getOrderV1(@PathVariable orderId: Long): ApiResponse<AppOrderResponse> {
+        val consumerId = authContext.getCurrentMemberId()
+        return ApiResponse.success(AppOrderResponse.from(orderService.getConsumerOrderEntity(consumerId, orderId)))
+    }
 }
