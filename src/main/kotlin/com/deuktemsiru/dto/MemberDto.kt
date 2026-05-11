@@ -24,3 +24,27 @@ data class MemberResponse(
         )
     }
 }
+
+data class UserApiResponse(
+    val id: Long,
+    val nickname: String,
+    val role: String,
+    val grade: String,
+    val totalSavings: Int,
+    val points: Int,
+    val couponCount: Int,
+    val co2Saved: Float,
+) {
+    companion object {
+        fun from(member: Member) = UserApiResponse(
+            id = member.memberId,
+            nickname = member.nickname,
+            role = member.role.name,
+            grade = "WELCOME",
+            totalSavings = 0,
+            points = 0,
+            couponCount = 0,
+            co2Saved = 0f,
+        )
+    }
+}

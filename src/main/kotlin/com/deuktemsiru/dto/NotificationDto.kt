@@ -29,3 +29,23 @@ data class NotificationResponse(
         )
     }
 }
+
+data class AppNotificationResponse(
+    val id: Long,
+    val storeId: Long,
+    val storeName: String,
+    val message: String,
+    val sentAt: String,
+    val recipientCount: Int,
+) {
+    companion object {
+        fun from(notification: Notification) = AppNotificationResponse(
+            id = notification.notificationId,
+            storeId = notification.relatedStoreId ?: 0,
+            storeName = notification.title,
+            message = notification.body,
+            sentAt = notification.createdAt.toString(),
+            recipientCount = 1,
+        )
+    }
+}

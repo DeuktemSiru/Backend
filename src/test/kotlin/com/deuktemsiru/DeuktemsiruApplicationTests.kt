@@ -129,16 +129,20 @@ class DeuktemsiruApplicationTests {
         )
 
         assertThrows(IllegalArgumentException::class.java) {
-            orderService.updateOrderStatus(seller.memberId, order.orderId, UpdateOrderStatusRequest(OrderStatus.PICKED_UP))
+            orderService.updateOrderStatus(seller.memberId, order.orderId, UpdateOrderStatusRequest(OrderStatus.READY))
         }
 
         assertEquals(
-            OrderStatus.CONFIRMED,
-            orderService.updateOrderStatus(seller.memberId, order.orderId, UpdateOrderStatusRequest(OrderStatus.CONFIRMED)).status,
+            OrderStatus.PREPARING,
+            orderService.updateOrderStatus(seller.memberId, order.orderId, UpdateOrderStatusRequest(OrderStatus.PREPARING)).status,
         )
         assertEquals(
-            OrderStatus.PICKED_UP,
-            orderService.updateOrderStatus(seller.memberId, order.orderId, UpdateOrderStatusRequest(OrderStatus.PICKED_UP)).status,
+            OrderStatus.READY,
+            orderService.updateOrderStatus(seller.memberId, order.orderId, UpdateOrderStatusRequest(OrderStatus.READY)).status,
+        )
+        assertEquals(
+            OrderStatus.COMPLETED,
+            orderService.updateOrderStatus(seller.memberId, order.orderId, UpdateOrderStatusRequest(OrderStatus.COMPLETED)).status,
         )
 
         assertThrows(IllegalArgumentException::class.java) {

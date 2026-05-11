@@ -41,7 +41,7 @@ class Orders(
     val items: MutableList<OrderItem> = mutableListOf(),
 )
 
-enum class OrderStatus { PENDING, CONFIRMED, PICKED_UP, CANCELLED }
+enum class OrderStatus { PENDING, PREPARING, READY, COMPLETED, CANCELLED }
 
 @Entity
 @Table(name = "order_item")

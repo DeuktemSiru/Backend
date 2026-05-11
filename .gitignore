@@ -17,6 +17,7 @@ out/
 HELP.md
 
 # Secrets & environment
+local.properties
 application-local.properties
 application-local.yml
 application-prod.properties
