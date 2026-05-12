@@ -65,6 +65,7 @@ data class UpdateOrderStatusRequest(
 )
 
 data class AppOrderItemResponse(
+    val productId: Long,
     val menuItemId: Long,
     val name: String,
     val emoji: String,
@@ -73,6 +74,7 @@ data class AppOrderItemResponse(
 ) {
     companion object {
         fun from(item: OrderItem) = AppOrderItemResponse(
+            productId = item.product.productId,
             menuItemId = item.product.productId,
             name = item.product.name,
             emoji = categoryEmoji(item.product.store.categories.firstOrNull()?.category?.name),
