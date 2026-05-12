@@ -14,25 +14,22 @@ class OrderController(
     private val authContext: AuthContext,
 ) {
 
-    // POST /api/orders?buyerId=1
     @PostMapping("/orders")
     @ResponseStatus(HttpStatus.CREATED)
     fun createOrder(
-        @RequestParam buyerId: Long,
+        @RequestParam consumerId: Long,
         @RequestBody req: CreateOrderRequest,
     ): OrderResponse {
-        authContext.requireCurrentUserId(buyerId)
-        return orderService.createOrder(buyerId, req)
+        authContext.requireCurrentMemberId(consumerId)
+        return orderService.createOrder(consumerId, req)
     }
 
-    // GET /api/orders?buyerId=1
     @GetMapping("/orders")
-    fun getMyOrders(@RequestParam buyerId: Long): List<OrderResponse> {
-        authContext.requireCurrentUserId(buyerId)
-        return orderService.getMyOrders(buyerId)
+    fun getMyOrders(@RequestParam consumerId: Long): List<OrderResponse> {
+        authContext.requireCurrentMemberId(consumerId)
+        return orderService.getMyOrders(consumerId)
     }
 
-    // GET /api/orders/{orderId}
     @GetMapping("/orders/{orderId}")
     fun getOrder(@PathVariable orderId: Long): OrderResponse =
         orderService.getOrder(orderId)
