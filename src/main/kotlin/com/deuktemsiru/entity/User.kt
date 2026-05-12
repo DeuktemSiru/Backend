@@ -19,7 +19,7 @@ class User(
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
-    var role: UserRole = UserRole.BUYER,
+    var role: UserRole = UserRole.CONSUMER,
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
@@ -31,6 +31,7 @@ class User(
     var co2Saved: Float = 0f,
 )
 
-enum class UserRole { BUYER, SELLER }
+enum class UserRole { CONSUMER, SELLER,
+    @Deprecated("Use CONSUMER") BUYER
+}
 
-enum class UserGrade { SPROUT, TREE, FOREST }

@@ -8,7 +8,7 @@ data class RegisterRequest(
     val email: String,
     val nickname: String,
     val password: String,
-    val role: UserRole = UserRole.BUYER,
+    val role: UserRole = UserRole.CONSUMER,
 )
 
 data class LoginRequest(
@@ -47,4 +47,3 @@ data class UserResponse(
             co2Saved = user.co2Saved,
         )
     }
-}

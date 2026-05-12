@@ -32,7 +32,7 @@ class OrderService(
     @Transactional
     fun createOrder(buyerId: Long, req: CreateOrderRequest): OrderResponse {
         val buyer = userService.findUser(buyerId)
-        require(buyer.role == UserRole.BUYER) { "구매자 계정만 주문할 수 있습니다." }
+        require(buyer.role == UserRole.CONSUMER || buyer.role == UserRole.BUYER) { "구매자 계정만 주문할 수 있습니다." }
         require(req.items.isNotEmpty()) { "주문 항목이 없습니다." }
 
         val store = storeService.findStore(req.storeId)
@@ -200,7 +200,4 @@ class OrderService(
             OrderStatus.PREPARING -> next == OrderStatus.READY || next == OrderStatus.REJECTED
             OrderStatus.READY -> next == OrderStatus.COMPLETED
             OrderStatus.COMPLETED,
-            OrderStatus.REJECTED -> false
-        }
-    }
-}
+            OrderStatus.REJEC
