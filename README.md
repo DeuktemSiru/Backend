@@ -88,6 +88,9 @@ Gradle이 다른 JDK를 자동 감지해 문제가 생기면 Java 경로를 명�
 | `spring.servlet.multipart.max-file-size` | `5MB` | 단일 업로드 파일 제한 |
 | `spring.servlet.multipart.max-request-size` | `6MB` | multipart 요청 제한 |
 | `kakao.api.user-info-url` | `https://kapi.kakao.com/v2/user/me` | 카카오 사용자 정보 API |
+| `app.security.dev-endpoints-enabled` | `true` | 개발용 H2 콘솔 공개 여부. 운영 profile에서는 `false`입니다. |
+
+운영 실행 시에는 `prod` profile을 사용하고 `SPRING_DATASOURCE_URL`, `SPRING_DATASOURCE_USERNAME`, `SPRING_DATASOURCE_PASSWORD`, `APP_JWT_SECRET`을 환경변수로 설정합니다. `prod` profile은 H2 콘솔을 비활성화하고 JPA DDL 자동 생성을 `validate`로 둡니다.
 
 ## 샘플 데이터
 
