@@ -24,6 +24,7 @@ class SecurityConfig(private val jwtAuthenticationFilter: JwtAuthenticationFilte
             .authorizeHttpRequests { auth ->
                 auth
                     .requestMatchers(
+                        "/api/v1/auth/**",
                         "/api/auth/**",
                         "/h2-console/**",
                         "/swagger-ui.html",
@@ -38,5 +39,4 @@ class SecurityConfig(private val jwtAuthenticationFilter: JwtAuthenticationFilte
     }
 
     @Bean
-    fun passwordEncoder(): PasswordEncoder = BCryptPasswordEncoder()
-}
+    fun passwordEncoder(): Pa
