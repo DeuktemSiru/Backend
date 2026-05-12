@@ -1,37 +1,30 @@
 package com.deuktemsiru.controller
 
-import com.deuktemsiru.dto.StoreResponse
+import com.deuktemsiru.common.ApiResponse
+import com.deuktemsiru.dto.BuyerStoreResponse
 import com.deuktemsiru.security.AuthContext
 import com.deuktemsiru.service.StoreService
-import org.springframework.web.bind.annotation.GetMapping
-import org.springframework.web.bind.annotation.PathVariable
-import org.springframework.web.bind.annotation.PostMapping
-import org.springframework.web.bind.annotation.RequestMapping
-import org.springframework.web.bind.annotation.RequestParam
-import org.springframework.web.bind.annotation.RestController
+import org.springframework.web.bind.annotation.*
 
 @RestController
-@RequestMapping("/api/wishlist")
+@RequestMapping("/api/v1/wishlist")
 class WishlistController(
     private val storeService: StoreService,
     private val authContext: AuthContext,
 ) {
 
-    // POST /api/wishlist/{storeId}?userId=1
     @PostMapping("/{storeId}")
     fun toggleWishlist(
         @PathVariable storeId: Long,
-        @RequestParam userId: Long,
-    ): Map<String, Any> {
-        authContext.requireCurrentUserId(userId)
-        val isWishlisted = storeService.toggleWishlist(userId, storeId)
-        return mapOf("isWishlisted" to isWishlisted)
+    ): ApiResponse<Map<String, Any>> {
+        val memberId = authContext.getCurrentMemberId()
+        val isWishlisted = storeService.toggleWishlist(memberId, storeId)
+        return ApiResponse.success(mapOf("isWishlisted" to isWishlisted))
     }
 
-    // GET /api/wishlist?userId=1
     @GetMapping
-    fun getWishlist(@RequestParam userId: Long): List<StoreResponse> {
-        authContext.requireCurrentUserId(userId)
-        return storeService.getWishlist(userId)
+    fun getWishlist(): ApiResponse<List<BuyerStoreResponse>> {
+        val memberId = authContext.getCurrentMemberId()
+        return ApiResponse.success(storeService.getWishlistBuyer(memberId))
     }
 }
