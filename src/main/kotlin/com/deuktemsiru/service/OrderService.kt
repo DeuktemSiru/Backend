@@ -115,6 +115,9 @@ class OrderService(
         require(canTransition(order.status, req.status)) {
             "주문 상태를 ${order.status}에서 ${req.status}(으)로 변경할 수 없습니다."
         }
+        if (req.status == OrderStatus.CANCELLED && order.status != OrderStatus.CANCELLED) {
+            restoreCancelledOrderStock(order)
+        }
         order.status = req.status
         return order
     }
@@ -186,6 +189,17 @@ class OrderService(
         require(product.store.storeId == store.storeId) { "선택한 가게의 상품만 주문할 수 있습니다." }
         require(product.status == ProductStatus.AVAILABLE) { "${product.name}은(는) 구매 불가 상태입니다." }
         require(product.quantityRemaining >= quantity) { "${product.name} 재고가 부족합니다." }
+    }
+
+    private fun restoreCancelledOrderStock(order: Orders) {
+        order.items.forEach { item ->
+            val product = item.product
+            product.quantityRemaining = (product.quantityRemaining + item.quantity)
+                .coerceAtMost(product.quantityTotal)
+            if (product.status == ProductStatus.SOLD_OUT && product.quantityRemaining > 0) {
+                product.status = ProductStatus.AVAILABLE
+            }
+        }
     }
 
     private fun salesData(

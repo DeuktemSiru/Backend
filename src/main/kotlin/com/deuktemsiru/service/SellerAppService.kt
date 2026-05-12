@@ -71,6 +71,9 @@ class SellerAppService(
         require(product.store.storeId == store.storeId) { "접근 권한이 없습니다." }
         product.status = parseProductStatus(req.status)
         if (product.status == ProductStatus.SOLD_OUT) product.quantityRemaining = 0
+        if (product.status == ProductStatus.AVAILABLE && product.quantityRemaining == 0) {
+            product.quantityRemaining = product.quantityTotal
+        }
         return SellerSaleItemResponse.from(product)
     }
 
@@ -80,7 +83,8 @@ class SellerAppService(
         val product = productRepository.findById(productId)
             .orElseThrow { NoSuchElementException("판매 상품을 찾을 수 없습니다.") }
         require(product.store.storeId == store.storeId) { "접근 권한이 없습니다." }
-        productRepository.delete(product)
+        product.status = ProductStatus.CANCELLED
+        product.quantityRemaining = 0
     }
 
     fun getMenus(sellerId: Long): List<SellerMenuItemResponse> {
