@@ -1,56 +1,29 @@
 package com.deuktemsiru.controller.seller
 
 import com.deuktemsiru.common.ApiResponse
-import com.deuktemsiru.dto.StoreResponse
-import com.deuktemsiru.dto.UpdateStoreRequest
+import com.deuktemsiru.dto.SellerStoreResponse
+import com.deuktemsiru.dto.SellerUpdateStoreRequest
 import com.deuktemsiru.security.AuthContext
-import com.deuktemsiru.service.StoreService
-import org.springframework.http.HttpStatus
-import org.springframework.http.ResponseEntity
+import com.deuktemsiru.service.SellerAppService
 import org.springframework.web.bind.annotation.*
-
-// ── Request / Response DTOs ───────────────────────────────────────────────────
-
-data class StoreCreateRequest(
-    val name: String,
-    val category: String,
-    val address: String,
-    val phone: String,
-    val latitude: Double,
-    val longitude: Double,
-    val closingTime: String,
-)
 
 // ── Controller ────────────────────────────────────────────────────────────────
 
 @RestController
 @RequestMapping("/api/v1/sellers/stores")
 class SellerStoreController(
-    private val storeService: StoreService,
+    private val sellerAppService: SellerAppService,
     private val authContext: AuthContext,
 ) {
-
-    /**
-     * POST /api/v1/sellers/stores
-     * 가게 등록
-     * TODO: 가게 등록 서비스 메서드 구현 필요
-     */
-    @PostMapping
-    fun createStore(
-        @RequestBody req: StoreCreateRequest,
-    ): ResponseEntity<ApiResponse<StoreResponse>> {
-        throw UnsupportedOperationException("가게 등록: 미구현 — StoreService.createStore() 구현 필요")
-    }
 
     /**
      * GET /api/v1/sellers/stores/my
      * 내 가게 조회
      */
     @GetMapping("/my")
-    fun getMyStore(): ApiResponse<StoreResponse> {
+    fun getMyStore(): ApiResponse<SellerStoreResponse> {
         val sellerId = authContext.getCurrentMemberId()
-        val store = storeService.getSellerStore(sellerId)
-        return ApiResponse.success(store)
+        return ApiResponse.success(sellerAppService.getStore(sellerId))
     }
 
     /**
@@ -60,10 +33,19 @@ class SellerStoreController(
     @PutMapping("/{storeId}")
     fun updateStore(
         @PathVariable storeId: Long,
-        @RequestBody req: UpdateStoreRequest,
-    ): ApiResponse<StoreResponse> {
+        @RequestBody req: SellerUpdateStoreRequest,
+    ): ApiResponse<SellerStoreResponse> {
         val sellerId = authContext.getCurrentMemberId()
-        val store = storeService.updateStore(sellerId, req)
-        return ApiResponse.success(store)
+        return ApiResponse.success(sellerAppService.updateStore(sellerId, req))
+    }
+
+    /**
+     * POST /api/v1/sellers/stores
+     * 가게 등록
+     * TODO: 가게 등록 서비스 메서드 구현 필요
+     */
+    @PostMapping
+    fun createStore(): ApiResponse<Unit> {
+        throw UnsupportedOperationException("가게 등록: 미구현 — SellerAppService.createStore() 구현 필요")
     }
 }

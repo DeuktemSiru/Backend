@@ -4,6 +4,8 @@ import com.deuktemsiru.common.ApiResponse
 import com.deuktemsiru.service.StoreService
 import org.springframework.web.bind.annotation.*
 
+// ── Response DTOs ─────────────────────────────────────────────────────────────
+
 data class StoreMarker(
     val storeId: Long,
     val name: String,
@@ -14,6 +16,8 @@ data class StoreMarker(
 )
 
 data class StoreMapResponse(val markers: List<StoreMarker>)
+
+// ── Controller ────────────────────────────────────────────────────────────────
 
 @RestController
 @RequestMapping("/api/v1/stores/map")
@@ -33,15 +37,15 @@ class StoreMapController(
         @RequestParam(required = false, defaultValue = "2000") radius: Int,
         @RequestParam(required = false) category: String?,
     ): ApiResponse<StoreMapResponse> {
-        val stores = storeService.getStores(category, null)
-        val markers = stores.map {
+        val stores = storeService.getStores(null)
+        val markers = stores.map { store ->
             StoreMarker(
-                storeId = it.id,
-                name = it.name,
-                latitude = it.latitude,
-                longitude = it.longitude,
-                availableProductCount = it.menus.count { m -> !m.isSoldOut },
-                category = it.category.name,
+                storeId = store.id,
+                name = store.name,
+                latitude = store.latitude,
+                longitude = store.longitude,
+                availableProductCount = store.menus.count { !it.isSoldOut },
+                category = store.category.name,
             )
         }
         return ApiResponse.success(StoreMapResponse(markers))

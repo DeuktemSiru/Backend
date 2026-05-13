@@ -26,19 +26,20 @@ class NotificationController(
     @GetMapping
     fun getMyNotifications(): ApiResponse<NotificationListResponse> {
         val memberId = authContext.getCurrentMemberId()
-        val notifications = notificationService.getBuyerNotifications(memberId)
+        val notifications = notificationService.getNotifications(memberId)
         return ApiResponse.success(NotificationListResponse(notifications))
     }
 
     /**
      * PATCH /api/v1/notifications/{notificationId}/read
      * 알림 읽음 처리
-     * TODO: Notification 엔티티에 isRead 필드 추가 및 읽음 처리 로직 구현 필요
      */
     @PatchMapping("/{notificationId}/read")
     fun markAsRead(
         @PathVariable notificationId: Long,
     ): ApiResponse<Unit> {
-        throw UnsupportedOperationException("알림 읽음 처리: 미구현 — Notification.isRead 필드 및 서비스 메서드 구현 필요")
+        val memberId = authContext.getCurrentMemberId()
+        notificationService.markAsRead(memberId, notificationId)
+        return ApiResponse.success(Unit, "읽음 처리 완료")
     }
 }

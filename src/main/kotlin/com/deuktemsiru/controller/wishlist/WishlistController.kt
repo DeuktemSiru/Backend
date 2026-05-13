@@ -1,7 +1,7 @@
 package com.deuktemsiru.controller.wishlist
 
 import com.deuktemsiru.common.ApiResponse
-import com.deuktemsiru.dto.StoreResponse
+import com.deuktemsiru.dto.BuyerStoreResponse
 import com.deuktemsiru.security.AuthContext
 import com.deuktemsiru.service.StoreService
 import org.springframework.web.bind.annotation.*
@@ -10,27 +10,7 @@ import org.springframework.web.bind.annotation.*
 
 data class WishlistToggleResponse(val storeId: Long, val isWishlisted: Boolean)
 
-data class WishlistStoreItem(
-    val storeId: Long,
-    val name: String,
-    val category: String,
-    val ratingAvg: Float,
-    val availableProductCount: Int,
-    val thumbnailUrl: String?,
-) {
-    companion object {
-        fun from(store: StoreResponse) = WishlistStoreItem(
-            storeId = store.id,
-            name = store.name,
-            category = store.category.name,
-            ratingAvg = store.rating,
-            availableProductCount = store.menus.count { !it.isSoldOut },
-            thumbnailUrl = null,
-        )
-    }
-}
-
-data class WishlistResponse(val stores: List<WishlistStoreItem>)
+data class WishlistResponse(val stores: List<BuyerStoreResponse>)
 
 // ── Controller ────────────────────────────────────────────────────────────────
 
@@ -56,12 +36,12 @@ class WishlistController(
 
     /**
      * GET /api/v1/wishlist
-     * 찜 목록 조회
+     * 찜 목록 조회 (Product 기반 구매자용 응답)
      */
     @GetMapping
     fun getWishlist(): ApiResponse<WishlistResponse> {
         val memberId = authContext.getCurrentMemberId()
-        val stores = storeService.getWishlist(memberId).map { WishlistStoreItem.from(it) }
+        val stores = storeService.getWishlistBuyer(memberId)
         return ApiResponse.success(WishlistResponse(stores))
     }
 }
