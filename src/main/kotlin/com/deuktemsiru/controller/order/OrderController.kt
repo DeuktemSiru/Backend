@@ -70,4 +70,8 @@ class OrderController(
     @PatchMapping("/{orderId}/cancel")
     fun cancelOrder(
         @PathVariable orderId: Long,
-        @Reques
+        @RequestBody(required = false) req: OrderCancelRequest?,
+    ): ApiResponse<OrderResponse> {
+        throw UnsupportedOperationException("주문 취소: 미구현 — 취소 정책 및 환불 로직 구현 필요")
+    }
+}

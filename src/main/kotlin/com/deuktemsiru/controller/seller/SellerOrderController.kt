@@ -38,4 +38,37 @@ class SellerOrderController(
     @GetMapping("/{orderId}")
     fun getStoreOrder(
         @PathVariable orderId: Long,
-    ): ApiResponse<OrderResp
+    ): ApiResponse<OrderResponse> {
+        val sellerId = authContext.getCurrentMemberId()
+        val order = orderService.getStoreOrder(sellerId, orderId)
+        return ApiResponse.success(order)
+    }
+
+    /**
+     * PATCH /api/v1/sellers/orders/{orderId}/confirm
+     * 픽업 코드 확인 → 픽업 완료 처리
+     */
+    @PatchMapping("/{orderId}/confirm")
+    fun confirmPickup(
+        @PathVariable orderId: Long,
+        @RequestBody req: PickupConfirmRequest,
+    ): ApiResponse<OrderResponse> {
+        val sellerId = authContext.getCurrentMemberId()
+        val order = orderService.verifyPickupCode(sellerId, req.pickupCode)
+        return ApiResponse.success(OrderResponse.from(order))
+    }
+
+    /**
+     * PATCH /api/v1/sellers/orders/{orderId}/status
+     * 주문 상태 직접 변경 (PENDING → CONFIRMED → PICKED_UP / CANCELLED)
+     */
+    @PatchMapping("/{orderId}/status")
+    fun updateOrderStatus(
+        @PathVariable orderId: Long,
+        @RequestBody req: UpdateOrderStatusRequest,
+    ): ApiResponse<OrderResponse> {
+        val sellerId = authContext.getCurrentMemberId()
+        val order = orderService.updateOrderStatus(sellerId, orderId, req)
+        return ApiResponse.success(order)
+    }
+}

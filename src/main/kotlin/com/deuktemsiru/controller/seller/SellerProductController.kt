@@ -67,4 +67,5 @@ class SellerProductController(
         val sellerId = authContext.getCurrentMemberId()
         sellerAppService.deleteProduct(sellerId, productId)
         return ResponseEntity.noContent().build()
- 
+    }
+}

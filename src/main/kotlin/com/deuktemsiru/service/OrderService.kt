@@ -152,19 +152,20 @@ class OrderService(
         val todayOrders = allOrders.filter { it.createdAt.toLocalDate() == today }
 
         return SalesResponse(
-            todaySales = todayOrders.sumOf { it.totalPrice },
-            todayOrderCount = todayOrders.size,
-            salesData = salesData(period, offset, today, allOrders),
+            totalAmount = todayOrders.sumOf { it.totalPrice },
+            totalOrders = todayOrders.size,
+            chartData = salesData(period, offset, today, allOrders),
             topProducts = topProducts(allOrders),
+            carbonSavedKg = 0.0,
         )
     }
 
     fun getSellerSalesStats(sellerId: Long, period: String = "weekly", offset: Int = 0): SellerSalesResponse {
         val sales = getSalesStats(sellerId, period, offset)
         return SellerSalesResponse(
-            todaySales = sales.todaySales,
-            todayOrderCount = sales.todayOrderCount,
-            salesData = sales.salesData,
+            totalAmount = sales.totalAmount,
+            totalOrders = sales.totalOrders,
+            chartData = sales.chartData,
             topMenus = topMenus(getStoreOrderEntities(sellerId).filter { it.status != OrderStatus.CANCELLED }),
         )
     }
@@ -249,8 +250,8 @@ class OrderService(
         orders.flatMap { it.items }
             .groupBy { it.product.productId }
             .values
-            .map { items -> TopProduct(items.first().product.name, items.sumOf { it.quantity }) }
-            .sortedByDescending { it.count }
+            .map { items -> TopProduct(productName = items.first().product.name, soldCount = items.sumOf { it.quantity }) }
+            .sortedByDescending { it.soldCount }
             .take(3)
 
     private fun topMenus(orders: List<Orders>): List<TopMenu> =
@@ -262,4 +263,28 @@ class OrderService(
                 TopMenu(
                     name = product.name,
                     emoji = categoryEmoji(product.store.categories.firstOrNull()?.category?.name),
-                    count = items.sumOf { it.quan
+                    count = items.sumOf { it.quantity },
+                )
+            }
+            .sortedByDescending { it.count }
+            .take(3)
+
+    private fun generatePickupCode(): String {
+        val chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+        repeat(10) {
+            val code = (1..4).map { chars.random() }.joinToString("")
+            if (!orderRepository.existsByPickupCode(code)) return code
+        }
+        error("픽업 코드를 생성할 수 없습니다.")
+    }
+
+    private fun canTransition(current: OrderStatus, next: OrderStatus): Boolean {
+        if (current == next) return true
+        return when (current) {
+            OrderStatus.PENDING -> next == OrderStatus.CONFIRMED || next == OrderStatus.CANCELLED
+            OrderStatus.CONFIRMED -> next == OrderStatus.PICKED_UP || next == OrderStatus.CANCELLED
+            OrderStatus.PICKED_UP,
+            OrderStatus.CANCELLED -> false
+        }
+    }
+}

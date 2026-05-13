@@ -40,12 +40,12 @@ class StoreMapController(
         val stores = storeService.getStores(null)
         val markers = stores.map { store ->
             StoreMarker(
-                storeId = store.id,
+                storeId = store.storeId,
                 name = store.name,
                 latitude = store.latitude,
                 longitude = store.longitude,
-                availableProductCount = store.menus.count { !it.isSoldOut },
-                category = store.category.name,
+                availableProductCount = store.menuItems.count { it.isActive },
+                category = store.categories.firstOrNull() ?: "OTHER",
             )
         }
         return ApiResponse.success(StoreMapResponse(markers))
