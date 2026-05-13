@@ -8,18 +8,18 @@ import org.springframework.web.bind.annotation.*
 // ── Request / Response DTOs ───────────────────────────────────────────────────
 
 data class ReviewCreateRequest(
-    val orderId: Long,
     val storeId: Long,
-    val rating: Float,
-    val comment: String,
+    val orderId: Long,
+    val rating: Int,        // 1~5
+    val content: String?,
 )
 
 data class ReviewResponse(
     val reviewId: Long,
     val storeId: Long,
     val storeName: String,
-    val rating: Float,
-    val comment: String,
+    val rating: Int,
+    val content: String?,
     val createdAt: String,
 )
 
@@ -50,6 +50,4 @@ class ReviewController {
     fun deleteReview(
         @PathVariable reviewId: Long,
     ): ApiResponse<Unit> {
-        throw UnsupportedOperationException("리뷰 삭제: 미구현 — Review 엔티티 및 ReviewService 구현 필요")
-    }
-}
+        throw UnsupportedOperationException("리뷰 삭제: 미구현 — Review 엔티티 및 ReviewService 구현 필�

@@ -1,8 +1,8 @@
 package com.deuktemsiru.controller.seller
 
 import com.deuktemsiru.common.ApiResponse
-import com.deuktemsiru.dto.SellerMenuItemRequest
 import com.deuktemsiru.dto.SellerMenuItemResponse
+import com.deuktemsiru.dto.SellerMenuItemRequest
 import com.deuktemsiru.dto.SellerMenuItemUpdateRequest
 import com.deuktemsiru.security.AuthContext
 import com.deuktemsiru.service.SellerAppService
@@ -48,23 +48,25 @@ class SellerMenuController(
     /**
      * POST /api/v1/sellers/menu-items (multipart/form-data)
      * 메뉴 등록 — 이미지 포함 방식
+     * Fields: name(필수), description, originalPrice(필수), allergenInfo, image(필수)
      */
     @PostMapping(consumes = [MediaType.MULTIPART_FORM_DATA_VALUE])
     fun addMenuItemWithImage(
         @RequestPart name: String,
         @RequestPart originalPrice: String,
-        @RequestPart(required = false) costPrice: String?,
-        @RequestPart(required = false) allergyInfo: String?,
+        @RequestPart(required = false) description: String?,
+        @RequestPart(required = false) allergenInfo: String?,
         @RequestPart(required = false) image: MultipartFile?,
     ): ResponseEntity<ApiResponse<SellerMenuItemResponse>> {
         val sellerId = authContext.getCurrentMemberId()
-        val req = SellerMenuItemRequest(
+        val menu = sellerAppService.createMenuWithImage(
+            sellerId = sellerId,
             name = name,
+            description = description,
             originalPrice = originalPrice.toInt(),
-            costPrice = costPrice?.toIntOrNull(),
-            allergyInfo = allergyInfo,
+            allergenInfo = allergenInfo,
+            image = image,
         )
-        val menu = sellerAppService.createMenuWithImage(sellerId, req, image)
         return ResponseEntity.status(HttpStatus.CREATED)
             .body(ApiResponse.created(menu, "메뉴가 등록되었습니다."))
     }
@@ -91,7 +93,4 @@ class SellerMenuController(
         @PathVariable menuItemId: Long,
     ): ResponseEntity<Void> {
         val sellerId = authContext.getCurrentMemberId()
-        sellerAppService.deleteMenu(sellerId, menuItemId)
-        return ResponseEntity.noContent().build()
-    }
-}
+        sellerAppService.delete

@@ -17,17 +17,15 @@ class SellerSalesController(
 
     /**
      * GET /api/v1/sellers/sales/summary
-     * 매출 통계 조회 (오늘 매출, 주문 수, 주간/월간/연간 그래프, TOP 메뉴)
-     * @param period weekly | monthly | yearly
-     * @param offset 0 = 이번 주(월/년), 1 = 지난 주(월/년)
+     * 매출 통계 조회 (오늘 매출, 주문 수, 기간별 그래프, TOP 상품)
+     * @param period DAY | WEEK | MONTH (기본값: DAY) — spec v2.0 파라미터
+     * @param offset 0 = 이번 기간, 1 = 지난 기간
      */
     @GetMapping("/summary")
     fun getSalesSummary(
-        @RequestParam(defaultValue = "weekly") period: String,
+        @RequestParam(defaultValue = "WEEK") period: String,
         @RequestParam(defaultValue = "0") offset: Int,
     ): ApiResponse<SalesResponse> {
         val sellerId = authContext.getCurrentMemberId()
-        val stats = orderService.getSalesStats(sellerId, period, offset)
-        return ApiResponse.success(stats)
-    }
-}
+        // spec: DAY/WEEK/MONTH → service 내부: weekly/monthly
+        val normalizedPeriod = when (period.
