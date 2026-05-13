@@ -2,16 +2,23 @@ package com.deuktemsiru.service
 
 import com.deuktemsiru.dto.CreateOrderRequest
 import com.deuktemsiru.dto.DailySales
+import com.deuktemsiru.dto.OrderItemRequest
 import com.deuktemsiru.dto.OrderResponse
 import com.deuktemsiru.dto.SalesResponse
+import com.deuktemsiru.dto.SellerSalesResponse
+import com.deuktemsiru.dto.TopProduct
 import com.deuktemsiru.dto.TopMenu
 import com.deuktemsiru.dto.UpdateOrderStatusRequest
-import com.deuktemsiru.entity.Order
+import com.deuktemsiru.dto.categoryEmoji
+import com.deuktemsiru.entity.MemberRole
 import com.deuktemsiru.entity.OrderItem
 import com.deuktemsiru.entity.OrderStatus
-import com.deuktemsiru.entity.UserRole
-import com.deuktemsiru.repository.MenuItemRepository
+import com.deuktemsiru.entity.Orders
+import com.deuktemsiru.entity.Product
+import com.deuktemsiru.entity.ProductStatus
+import com.deuktemsiru.entity.Store
 import com.deuktemsiru.repository.OrderRepository
+import com.deuktemsiru.repository.ProductRepository
 import com.deuktemsiru.repository.StoreRepository
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -24,165 +31,226 @@ import java.time.temporal.TemporalAdjusters
 class OrderService(
     private val orderRepository: OrderRepository,
     private val storeRepository: StoreRepository,
-    private val menuItemRepository: MenuItemRepository,
-    private val userService: UserService,
+    private val productRepository: ProductRepository,
+    private val memberService: MemberService,
     private val storeService: StoreService,
 ) {
 
     @Transactional
-    fun createOrder(buyerId: Long, req: CreateOrderRequest): OrderResponse {
-        val buyer = userService.findUser(buyerId)
-        require(buyer.role == UserRole.CONSUMER || buyer.role == UserRole.BUYER) { "구매자 계정만 주문할 수 있습니다." }
+    fun createOrder(consumerId: Long, req: CreateOrderRequest): OrderResponse {
+        return OrderResponse.from(createOrderEntity(consumerId, req))
+    }
+
+    @Transactional
+    fun createOrderEntity(consumerId: Long, req: CreateOrderRequest): Orders {
+        val consumer = memberService.findMember(consumerId)
+        require(consumer.role == MemberRole.CONSUMER) { "소비자 계정만 주문할 수 있습니다." }
         require(req.items.isNotEmpty()) { "주문 항목이 없습니다." }
 
         val store = storeService.findStore(req.storeId)
-
-        val order = Order(
-            buyer = buyer,
+        val order = Orders(
+            consumer = consumer,
             store = store,
             pickupCode = generatePickupCode(),
-            pickupTime = req.pickupTime,
         )
 
-        var total = 0
-        var savedAmount = 0
-        for (itemReq in req.items) {
-            require(itemReq.quantity > 0) { "주문 수량은 1개 이상이어야 합니다." }
+        order.items += req.items.map { createOrderItem(order, store, it) }
+        order.totalPrice = order.items.sumOf { it.unitPrice * it.quantity }
 
-            val menuItem = menuItemRepository.findByIdForUpdate(itemReq.menuItemId)
-                .orElseThrow { NoSuchElementException("메뉴를 찾을 수 없습니다.") }
-            require(menuItem.store.id == store.id) { "선택한 가게의 메뉴만 주문할 수 있습니다." }
-            require(!menuItem.isSoldOut) { "${menuItem.name}은(는) 품절되었습니다." }
-            require(menuItem.remainingItems >= itemReq.quantity) { "${menuItem.name} 재고가 부족합니다." }
-
-            menuItem.remainingItems -= itemReq.quantity
-            if (menuItem.remainingItems == 0) menuItem.isSoldOut = true
-
-            val lineTotal = menuItem.discountedPrice * itemReq.quantity
-            total += lineTotal
-            savedAmount += (menuItem.originalPrice - menuItem.discountedPrice) * itemReq.quantity
-            order.items.add(OrderItem(order = order, menuItem = menuItem, quantity = itemReq.quantity, price = lineTotal))
-        }
-        order.totalAmount = total
-
-        val saved = orderRepository.save(order)
-        userService.updateSavings(buyerId, savedAmount)
-        return OrderResponse.from(saved)
+        return orderRepository.save(order)
     }
 
-    fun getMyOrders(buyerId: Long): List<OrderResponse> {
-        val buyer = userService.findUser(buyerId)
-        return orderRepository.findByBuyerOrderByCreatedAtDesc(buyer).map { OrderResponse.from(it) }
+    fun getMyOrders(consumerId: Long): List<OrderResponse> {
+        return getMyOrderEntities(consumerId).map { OrderResponse.from(it) }
+    }
+
+    fun getMyOrderEntities(consumerId: Long): List<Orders> {
+        val consumer = memberService.findMember(consumerId)
+        return orderRepository.findByConsumerOrderByCreatedAtDesc(consumer)
     }
 
     fun getOrder(orderId: Long): OrderResponse {
+        return OrderResponse.from(getOrderEntity(orderId))
+    }
+
+    fun getOrderEntity(orderId: Long): Orders {
         val order = orderRepository.findById(orderId)
             .orElseThrow { NoSuchElementException("주문을 찾을 수 없습니다.") }
-        return OrderResponse.from(order)
+        return order
     }
 
     fun getStoreOrders(sellerId: Long): List<OrderResponse> {
-        val seller = userService.findUser(sellerId)
-        require(seller.role == UserRole.SELLER) { "판매자 계정만 주문을 조회할 수 있습니다." }
+        return getStoreOrderEntities(sellerId).map { OrderResponse.from(it) }
+    }
+
+    fun getStoreOrderEntities(sellerId: Long): List<Orders> {
+        val seller = memberService.findMember(sellerId)
+        require(seller.role == MemberRole.SELLER) { "판매자 계정만 주문을 조회할 수 있습니다." }
         val store = storeRepository.findByOwner(seller)
             .orElseThrow { NoSuchElementException("등록된 가게가 없습니다.") }
-        return orderRepository.findByStoreOrderByCreatedAtDesc(store).map { OrderResponse.from(it) }
+        return orderRepository.findByStoreOrderByCreatedAtDesc(store)
     }
 
     @Transactional
     fun updateOrderStatus(sellerId: Long, orderId: Long, req: UpdateOrderStatusRequest): OrderResponse {
-        val seller = userService.findUser(sellerId)
-        require(seller.role == UserRole.SELLER) { "판매자 계정만 주문 상태를 변경할 수 있습니다." }
+        return OrderResponse.from(updateOrderStatusEntity(sellerId, orderId, req))
+    }
+
+    @Transactional
+    fun updateOrderStatusEntity(sellerId: Long, orderId: Long, req: UpdateOrderStatusRequest): Orders {
+        val seller = memberService.findMember(sellerId)
+        require(seller.role == MemberRole.SELLER) { "판매자 계정만 주문 상태를 변경할 수 있습니다." }
         val store = storeRepository.findByOwner(seller)
             .orElseThrow { NoSuchElementException("등록된 가게가 없습니다.") }
         val order = orderRepository.findById(orderId)
             .orElseThrow { NoSuchElementException("주문을 찾을 수 없습니다.") }
-        require(order.store.id == store.id) { "접근 권한이 없습니다." }
+        require(order.store.storeId == store.storeId) { "접근 권한이 없습니다." }
         require(canTransition(order.status, req.status)) {
             "주문 상태를 ${order.status}에서 ${req.status}(으)로 변경할 수 없습니다."
         }
         order.status = req.status
-        return OrderResponse.from(order)
+        return order
+    }
+
+    @Transactional
+    fun verifyPickupCode(sellerId: Long, pickupCode: String): Orders {
+        val seller = memberService.findMember(sellerId)
+        require(seller.role == MemberRole.SELLER) { "판매자 계정만 픽업 코드를 검증할 수 있습니다." }
+        val store = storeRepository.findByOwner(seller)
+            .orElseThrow { NoSuchElementException("등록된 가게가 없습니다.") }
+        val order = orderRepository.findByPickupCode(pickupCode)
+            ?: throw NoSuchElementException("픽업 코드를 찾을 수 없습니다.")
+        require(order.store.storeId == store.storeId) { "접근 권한이 없습니다." }
+        if (order.status == OrderStatus.CONFIRMED) order.status = OrderStatus.PICKED_UP
+        return order
     }
 
     fun getSalesStats(sellerId: Long, period: String = "weekly", offset: Int = 0): SalesResponse {
-        val seller = userService.findUser(sellerId)
+        val seller = memberService.findMember(sellerId)
         val store = storeRepository.findByOwner(seller)
             .orElseThrow { NoSuchElementException("등록된 가게가 없습니다.") }
         val allOrders = orderRepository.findByStoreOrderByCreatedAtDesc(store)
-            .filter { it.status != OrderStatus.REJECTED }
+            .filter { it.status != OrderStatus.CANCELLED }
 
         val today = LocalDate.now()
         val todayOrders = allOrders.filter { it.createdAt.toLocalDate() == today }
-        val todaySales = todayOrders.sumOf { it.totalAmount }
-
-        val salesData: List<DailySales> = when (period) {
-            "monthly" -> {
-                val targetMonth = today.minusMonths(offset.toLong())
-                val firstDay = targetMonth.withDayOfMonth(1)
-                val lastDay = targetMonth.with(TemporalAdjusters.lastDayOfMonth())
-                val result = mutableListOf<DailySales>()
-                var weekStart = firstDay
-                var weekNum = 1
-                while (!weekStart.isAfter(lastDay)) {
-                    val weekEnd = minOf(weekStart.plusDays(6), lastDay)
-                    val amount = allOrders
-                        .filter {
-                            val d = it.createdAt.toLocalDate()
-                            !d.isBefore(weekStart) && !d.isAfter(weekEnd)
-                        }
-                        .sumOf { it.totalAmount }
-                    result.add(DailySales("${weekNum}주", amount))
-                    weekStart = weekStart.plusDays(7)
-                    weekNum++
-                }
-                result
-            }
-            "yearly" -> {
-                val targetYear = today.year - offset
-                (1..12).map { month ->
-                    val amount = allOrders
-                        .filter {
-                            val d = it.createdAt.toLocalDate()
-                            d.year == targetYear && d.monthValue == month
-                        }
-                        .sumOf { it.totalAmount }
-                    DailySales("${month}월", amount)
-                }
-            }
-            else -> {
-                // weekly: 최근 7일 기준, offset 1 = 지난주
-                val endDay = today.minusDays((offset * 7).toLong())
-                val startDay = endDay.minusDays(6)
-                val formatter = DateTimeFormatter.ofPattern("MM/dd")
-                (0..6).map { i ->
-                    val date = startDay.plusDays(i.toLong())
-                    val amount = allOrders
-                        .filter { it.createdAt.toLocalDate() == date }
-                        .sumOf { it.totalAmount }
-                    DailySales(date.format(formatter), amount)
-                }
-            }
-        }
-
-        val menuCount = mutableMapOf<Long, Triple<String, String, Int>>()
-        allOrders.flatMap { it.items }.forEach { item ->
-            val id = item.menuItem.id
-            val (name, emoji, count) = menuCount.getOrDefault(id, Triple(item.menuItem.name, item.menuItem.emoji, 0))
-            menuCount[id] = Triple(name, emoji, count + item.quantity)
-        }
-        val topMenus = menuCount.values
-            .sortedByDescending { it.third }
-            .take(3)
-            .map { (name, emoji, count) -> TopMenu(name, emoji, count) }
 
         return SalesResponse(
-            todaySales = todaySales,
+            todaySales = todayOrders.sumOf { it.totalPrice },
             todayOrderCount = todayOrders.size,
-            salesData = salesData,
-            topMenus = topMenus,
+            salesData = salesData(period, offset, today, allOrders),
+            topProducts = topProducts(allOrders),
         )
     }
+
+    fun getSellerSalesStats(sellerId: Long, period: String = "weekly", offset: Int = 0): SellerSalesResponse {
+        val sales = getSalesStats(sellerId, period, offset)
+        return SellerSalesResponse(
+            todaySales = sales.todaySales,
+            todayOrderCount = sales.todayOrderCount,
+            salesData = sales.salesData,
+            topMenus = topMenus(getStoreOrderEntities(sellerId).filter { it.status != OrderStatus.CANCELLED }),
+        )
+    }
+
+    private fun createOrderItem(
+        order: Orders,
+        store: Store,
+        itemReq: OrderItemRequest,
+    ): OrderItem {
+        require(itemReq.quantity > 0) { "주문 수량은 1개 이상이어야 합니다." }
+
+        val product = productRepository.findByIdForUpdate(itemReq.resolvedProductId())
+            .orElseThrow { NoSuchElementException("상품을 찾을 수 없습니다.") }
+        validateProduct(product, store, itemReq.quantity)
+
+        product.quantityRemaining -= itemReq.quantity
+        if (product.quantityRemaining == 0) product.status = ProductStatus.SOLD_OUT
+
+        return OrderItem(
+            order = order,
+            product = product,
+            quantity = itemReq.quantity,
+            unitPrice = product.discountPrice,
+        )
+    }
+
+    private fun validateProduct(product: Product, store: Store, quantity: Int) {
+        require(product.store.storeId == store.storeId) { "선택한 가게의 상품만 주문할 수 있습니다." }
+        require(product.status == ProductStatus.AVAILABLE) { "${product.name}은(는) 구매 불가 상태입니다." }
+        require(product.quantityRemaining >= quantity) { "${product.name} 재고가 부족합니다." }
+    }
+
+    private fun salesData(
+        period: String,
+        offset: Int,
+        today: LocalDate,
+        orders: List<Orders>,
+    ): List<DailySales> = when (period) {
+        "monthly" -> monthlySales(today.minusMonths(offset.toLong()), orders)
+        "yearly" -> yearlySales(today.year - offset, orders)
+        else -> weeklySales(today.minusDays((offset * 7).toLong()), orders)
+    }
+
+    private fun monthlySales(targetMonth: LocalDate, orders: List<Orders>): List<DailySales> {
+        val firstDay = targetMonth.withDayOfMonth(1)
+        val lastDay = targetMonth.with(TemporalAdjusters.lastDayOfMonth())
+        return generateSequence(firstDay) { it.plusDays(7) }
+            .takeWhile { !it.isAfter(lastDay) }
+            .mapIndexed { index, weekStart ->
+                val weekEnd = minOf(weekStart.plusDays(6), lastDay)
+                DailySales("${index + 1}주", orders.sumBetween(weekStart, weekEnd))
+            }
+            .toList()
+    }
+
+    private fun yearlySales(year: Int, orders: List<Orders>): List<DailySales> =
+        (1..12).map { month ->
+            DailySales("${month}월", orders.sumOf { order ->
+                if (order.createdAt.year == year && order.createdAt.monthValue == month) order.totalPrice else 0
+            })
+        }
+
+    private fun weeklySales(endDay: LocalDate, orders: List<Orders>): List<DailySales> {
+        val startDay = endDay.minusDays(6)
+        val formatter = DateTimeFormatter.ofPattern("MM/dd")
+        return (0..6).map { i ->
+            val date = startDay.plusDays(i.toLong())
+            DailySales(date.format(formatter), orders.sumOn(date))
+        }
+    }
+
+    private fun List<Orders>.sumOn(date: LocalDate): Int =
+        sumOf { if (it.createdAt.toLocalDate() == date) it.totalPrice else 0 }
+
+    private fun List<Orders>.sumBetween(start: LocalDate, end: LocalDate): Int =
+        sumOf {
+            val date = it.createdAt.toLocalDate()
+            if (!date.isBefore(start) && !date.isAfter(end)) it.totalPrice else 0
+        }
+
+    private fun topProducts(orders: List<Orders>): List<TopProduct> =
+        orders.flatMap { it.items }
+            .groupBy { it.product.productId }
+            .values
+            .map { items -> TopProduct(items.first().product.name, items.sumOf { it.quantity }) }
+            .sortedByDescending { it.count }
+            .take(3)
+
+    private fun topMenus(orders: List<Orders>): List<TopMenu> =
+        orders.flatMap { it.items }
+            .groupBy { it.product.productId }
+            .values
+            .map { items ->
+                val product = items.first().product
+                TopMenu(
+                    name = product.name,
+                    emoji = categoryEmoji(product.store.categories.firstOrNull()?.category?.name),
+                    count = items.sumOf { it.quantity },
+                )
+            }
+            .sortedByDescending { it.count }
+            .take(3)
 
     private fun generatePickupCode(): String {
         val chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
@@ -196,8 +264,10 @@ class OrderService(
     private fun canTransition(current: OrderStatus, next: OrderStatus): Boolean {
         if (current == next) return true
         return when (current) {
-            OrderStatus.NEW -> next == OrderStatus.PREPARING || next == OrderStatus.REJECTED
-            OrderStatus.PREPARING -> next == OrderStatus.READY || next == OrderStatus.REJECTED
-            OrderStatus.READY -> next == OrderStatus.COMPLETED
-            OrderStatus.COMPLETED,
-            OrderStatus.REJEC
+            OrderStatus.PENDING -> next == OrderStatus.CONFIRMED || next == OrderStatus.CANCELLED
+            OrderStatus.CONFIRMED -> next == OrderStatus.PICKED_UP || next == OrderStatus.CANCELLED
+            OrderStatus.PICKED_UP,
+            OrderStatus.CANCELLED -> false
+        }
+    }
+}

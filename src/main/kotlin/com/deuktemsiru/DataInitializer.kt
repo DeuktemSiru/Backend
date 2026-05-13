@@ -4,139 +4,73 @@ import com.deuktemsiru.entity.*
 import com.deuktemsiru.repository.*
 import org.springframework.boot.ApplicationArguments
 import org.springframework.boot.ApplicationRunner
-import org.springframework.security.crypto.password.PasswordEncoder
 import org.springframework.stereotype.Component
-
-private data class MenuData(
-    val name: String,
-    val emoji: String,
-    val originalPrice: Int,
-    val discountRate: Int,
-    val quantity: Int,
-    val pickupTimeSlot: String,
-)
-
-private data class StoreData(
-    val owner: User,
-    val name: String,
-    val category: StoreCategory,
-    val emoji: String,
-    val rating: Float,
-    val address: String,
-    val phone: String,
-    val latitude: Double,
-    val longitude: Double,
-    val closingTime: String,
-    val menus: List<MenuData>,
-)
+import java.time.LocalDate
+import java.time.LocalTime
 
 @Component
 class DataInitializer(
-    private val userRepository: UserRepository,
+    private val memberRepository: MemberRepository,
     private val storeRepository: StoreRepository,
+    private val storeCategoryRepository: StoreCategoryRepository,
     private val menuItemRepository: MenuItemRepository,
-    private val passwordEncoder: PasswordEncoder,
+    private val productRepository: ProductRepository,
 ) : ApplicationRunner {
 
     override fun run(args: ApplicationArguments) {
-        val samplePassword = requireNotNull(passwordEncoder.encode("1234"))
+        // 이미 데이터가 있으면 초기화 건너뜀 (서버 재시작 시 중복 방지)
+        if (memberRepository.count() > 0) {
+            println("=== 이미 샘플 데이터가 존재합니다. 초기화를 건너뜁니다. ===")
+            return
+        }
+
         val sellers = listOf(
-            User(email = "bakery@test.com", nickname = "영희네베이커리", passwordHash = samplePassword, role = UserRole.SELLER),
-            User(email = "lunchbox@test.com", nickname = "맛있는도시락", passwordHash = samplePassword, role = UserRole.SELLER),
-            User(email = "salad@test.com", nickname = "그린샐러드", passwordHash = samplePassword, role = UserRole.SELLER),
-            User(email = "cafe1@test.com", nickname = "커피향기", passwordHash = samplePassword, role = UserRole.SELLER),
-            User(email = "cafe2@test.com", nickname = "달콤카페", passwordHash = samplePassword, role = UserRole.SELLER),
-            User(email = "bakery2@test.com", nickname = "파리크라상", passwordHash = samplePassword, role = UserRole.SELLER),
-        ).map { userRepository.save(it) }
+            Member(provider = MemberProvider.KAKAO, providerId = "kakao_seller_1", email = "bakery@test.com", name = "영희", nickname = "영희네베이커리", role = MemberRole.SELLER),
+            Member(provider = MemberProvider.KAKAO, providerId = "kakao_seller_2", email = "cafe@test.com",   name = "민준", nickname = "커피향기",       role = MemberRole.SELLER),
+            Member(provider = MemberProvider.KAKAO, providerId = "kakao_seller_3", email = "resto@test.com",  name = "수진", nickname = "맛있는식당",      role = MemberRole.SELLER),
+        ).map { memberRepository.save(it) }
 
-        val buyer = userRepository.save(
-            User(email = "buyer@test.com", nickname = "홍길동", passwordHash = samplePassword, role = UserRole.BUYER)
+        memberRepository.save(
+            Member(provider = MemberProvider.KAKAO, providerId = "kakao_buyer_1", email = "buyer@test.com", name = "홍길동", nickname = "득템러", role = MemberRole.CONSUMER)
         )
 
-        val storeDataList = listOf(
-            StoreData(
-                owner = sellers[0], name = "영희네 베이커리", category = StoreCategory.BAKERY,
-                emoji = "🥐", rating = 4.8f, address = "서울시 마포구 합정동 123-4",
-                phone = "02-1234-5678", latitude = 37.5499, longitude = 126.9145, closingTime = "20:00",
-                menus = listOf(
-                    MenuData("크루아상 세트", "🥐", 8500, 50, 3, "17:00-18:30"),
-                    MenuData("식빵 2개", "🍞", 6000, 40, 5, "17:00-18:30"),
-                    MenuData("마카롱 5개", "🍬", 12000, 60, 2, "18:30-20:00"),
-                )
-            ),
-            StoreData(
-                owner = sellers[1], name = "맛있는 도시락", category = StoreCategory.LUNCHBOX,
-                emoji = "🍱", rating = 4.5f, address = "서울시 강남구 역삼동 456-7",
-                phone = "02-2345-6789", latitude = 37.5007, longitude = 127.0365, closingTime = "19:00",
-                menus = listOf(
-                    MenuData("닭갈비 도시락", "🍱", 9000, 30, 4, "17:30-19:00"),
-                    MenuData("제육볶음 도시락", "🥩", 8500, 40, 3, "17:30-19:00"),
-                )
-            ),
-            StoreData(
-                owner = sellers[2], name = "그린 샐러드", category = StoreCategory.SALAD,
-                emoji = "🥗", rating = 4.3f, address = "서울시 서초구 방배동 789-1",
-                phone = "02-3456-7890", latitude = 37.4814, longitude = 126.9977, closingTime = "21:00",
-                menus = listOf(
-                    MenuData("시저 샐러드", "🥗", 11000, 50, 5, "18:00-21:00"),
-                    MenuData("그릭 샐러드", "🫙", 10000, 50, 3, "18:00-21:00"),
-                    MenuData("두부 샐러드", "🥬", 9500, 30, 2, "19:00-21:00"),
-                )
-            ),
-            StoreData(
-                owner = sellers[3], name = "커피향기", category = StoreCategory.CAFE,
-                emoji = "☕", rating = 4.6f, address = "서울시 용산구 한남동 321-5",
-                phone = "02-4567-8901", latitude = 37.5345, longitude = 127.0007, closingTime = "22:00",
-                menus = listOf(
-                    MenuData("아메리카노 2잔", "☕", 9000, 50, 6, "19:00-22:00"),
-                    MenuData("케이크 조각", "🍰", 7500, 40, 4, "19:00-22:00"),
-                )
-            ),
-            StoreData(
-                owner = sellers[4], name = "달콤카페", category = StoreCategory.CAFE,
-                emoji = "🧁", rating = 4.7f, address = "서울시 성동구 성수동 654-3",
-                phone = "02-5678-9012", latitude = 37.5446, longitude = 127.0557, closingTime = "21:30",
-                menus = listOf(
-                    MenuData("머핀 3개", "🧁", 9000, 60, 5, "18:00-21:30"),
-                    MenuData("라떼 2잔", "🥛", 10000, 30, 3, "20:00-21:30"),
-                )
-            ),
-            StoreData(
-                owner = sellers[5], name = "파리크라상", category = StoreCategory.BAKERY,
-                emoji = "🥖", rating = 4.4f, address = "서울시 마포구 서교동 987-6",
-                phone = "02-6789-0123", latitude = 37.5552, longitude = 126.9236, closingTime = "20:30",
-                menus = listOf(
-                    MenuData("바게트", "🥖", 5500, 30, 7, "17:00-20:30"),
-                    MenuData("소보로빵 4개", "🍞", 8000, 50, 4, "17:00-20:30"),
-                )
-            ),
+        val storeInfos = listOf(
+            Triple(sellers[0], "영희네 베이커리",  CategoryType.BAKERY),
+            Triple(sellers[1], "커피향기",         CategoryType.CAFE),
+            Triple(sellers[2], "맛있는식당",        CategoryType.RESTAURANT),
         )
 
-        storeDataList.forEach { sd ->
+        storeInfos.forEach { (seller, storeName, category) ->
             val store = storeRepository.save(
                 Store(
-                    owner = sd.owner, name = sd.name, category = sd.category,
-                    emoji = sd.emoji, rating = sd.rating, address = sd.address,
-                    phone = sd.phone, latitude = sd.latitude, longitude = sd.longitude,
-                    closingTime = sd.closingTime,
+                    owner = seller, name = storeName,
+                    address = "서울시 마포구 합정동 123-4",
+                    latitude = 37.5499, longitude = 126.9145,
+                    isVerified = true,
                 )
             )
-            sd.menus.forEach { md ->
-                menuItemRepository.save(
-                    MenuItem(
-                        store = store, name = md.name, emoji = md.emoji,
-                        originalPrice = md.originalPrice,
-                        discountedPrice = md.originalPrice * (100 - md.discountRate) / 100,
-                        discountRate = md.discountRate,
-                        remainingItems = md.quantity,
-                        pickupTimeSlot = md.pickupTimeSlot,
-                    )
+            storeCategoryRepository.save(StoreCategory(store = store, category = category))
+
+            val menuItem = menuItemRepository.save(
+                MenuItem(store = store, name = "샘플 메뉴", originalPrice = 8000)
+            )
+            productRepository.save(
+                Product(
+                    store = store,
+                    menuItem = menuItem,
+                    name = "마감할인 ${menuItem.name}",
+                    originalPrice = 8000,
+                    discountPrice = 4000,
+                    quantityTotal = 5,
+                    quantityRemaining = 5,
+                    pickupStart = LocalTime.of(17, 0),
+                    pickupEnd = LocalTime.of(20, 0),
+                    availableDate = LocalDate.now(),
+                    carbonSavedKg = 0.3,
                 )
-            }
+            )
         }
 
         println("=== 샘플 데이터 초기화 완료 ===")
-        println("바이어 계정: buyer@test.com / 1234  (userId: ${buyer.id})")
-        sellers.forEachIndexed { i, s -> println("셀러${i + 1}: ${s.email} / 1234  (userId: ${s.id})") }
     }
 }
