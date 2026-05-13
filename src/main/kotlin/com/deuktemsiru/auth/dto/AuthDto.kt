@@ -11,6 +11,11 @@ data class KakaoLoginRequest(
     val role: MemberRole,
 )
 
+data class DebugLoginRequest(
+    /** 로그인 없이 진입할 디버그 사용자 유형 */
+    val role: MemberRole,
+)
+
 data class TokenRefreshRequest(
     val refreshToken: String,
 )
