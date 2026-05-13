@@ -38,6 +38,7 @@ class SecurityConfig(
                 )
                 if (devEndpointsEnabled) {
                     publicMatchers += "/h2-console/**"
+                    publicMatchers += "/api/v1/auth/debug/login"
                 }
                 auth.requestMatchers(*publicMatchers.toTypedArray()).permitAll()
                     .anyRequest().authenticated()

@@ -8,12 +8,12 @@ import com.deuktemsiru.auth.dto.TokenResponse
 import com.deuktemsiru.common.UnauthorizedException
 import com.deuktemsiru.entity.Member
 import com.deuktemsiru.entity.MemberProvider
+import com.deuktemsiru.entity.MemberRole
 import com.deuktemsiru.entity.RefreshToken
 import com.deuktemsiru.repository.FcmTokenRepository
 import com.deuktemsiru.repository.MemberRepository
 import com.deuktemsiru.repository.RefreshTokenRepository
 import com.deuktemsiru.security.JwtService
-import org.springframework.http.HttpStatus
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.LocalDateTime
@@ -67,6 +67,49 @@ class AuthService(
         saveRefreshToken(member, refreshToken)
 
         return Pair(buildLoginResponse(member, accessToken, refreshToken), isNewMember)
+    }
+
+    /**
+     * 로컬 개발용 로그인. 실제 카카오 토큰 검증 없이 샘플 사용자에게 JWT를 발급합니다.
+     */
+    @Transactional
+    fun debugLogin(role: MemberRole): LoginResponse {
+        val debugUser = when (role) {
+            MemberRole.CONSUMER -> DebugUser(
+                providerId = "kakao_buyer_1",
+                email = "buyer@test.com",
+                name = "홍길동",
+                nickname = "득템러",
+                role = MemberRole.CONSUMER,
+            )
+            MemberRole.SELLER -> DebugUser(
+                providerId = "kakao_seller_1",
+                email = "bakery@test.com",
+                name = "영희",
+                nickname = "영희네베이커리",
+                role = MemberRole.SELLER,
+            )
+        }
+
+        val member = memberRepository.findByProviderAndProviderId(MemberProvider.KAKAO, debugUser.providerId)
+            .orElseGet {
+                memberRepository.save(
+                    Member(
+                        provider = MemberProvider.KAKAO,
+                        providerId = debugUser.providerId,
+                        email = debugUser.email,
+                        name = debugUser.name,
+                        nickname = debugUser.nickname,
+                        role = debugUser.role,
+                    )
+                )
+            }
+
+        val accessToken = jwtService.createAccessToken(member)
+        val refreshToken = jwtService.createRefreshToken(member)
+        saveRefreshToken(member, refreshToken)
+
+        return buildLoginResponse(member, accessToken, refreshToken)
     }
 
     /**
@@ -125,4 +168,12 @@ class AuthService(
                 role = member.role.name,
             ),
         )
+
+    private data class DebugUser(
+        val providerId: String,
+        val email: String,
+        val name: String,
+        val nickname: String,
+        val role: MemberRole,
+    )
 }

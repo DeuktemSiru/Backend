@@ -1,5 +1,6 @@
 package com.deuktemsiru.auth.controller
 
+import com.deuktemsiru.auth.dto.DebugLoginRequest
 import com.deuktemsiru.auth.dto.KakaoLoginRequest
 import com.deuktemsiru.auth.dto.LoginResponse
 import com.deuktemsiru.auth.dto.TokenRefreshRequest
@@ -7,8 +8,10 @@ import com.deuktemsiru.auth.dto.TokenResponse
 import com.deuktemsiru.auth.service.AuthService
 import com.deuktemsiru.common.ApiResponse
 import com.deuktemsiru.security.AuthContext
+import org.springframework.beans.factory.annotation.Value
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
+import org.springframework.web.server.ResponseStatusException
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
@@ -19,6 +22,8 @@ import org.springframework.web.bind.annotation.RestController
 class AuthController(
     private val authService: AuthService,
     private val authContext: AuthContext,
+    @Value("\${app.security.dev-endpoints-enabled:true}")
+    private val devEndpointsEnabled: Boolean,
 ) {
 
     /**
@@ -38,6 +43,23 @@ class AuthController(
         } else {
             ResponseEntity.ok(ApiResponse.success(response, "로그인 성공"))
         }
+    }
+
+    /**
+     * POST /api/v1/auth/debug/login
+     * 로컬 개발 전용 로그인. 카카오 SDK 없이 샘플 사용자 JWT를 발급합니다.
+     */
+    @PostMapping("/debug/login")
+    fun debugLogin(
+        @RequestBody req: DebugLoginRequest,
+    ): ApiResponse<LoginResponse> {
+        if (!devEndpointsEnabled) {
+            throw ResponseStatusException(
+                HttpStatus.NOT_FOUND,
+                "디버그 로그인은 비활성화되어 있습니다.",
+            )
+        }
+        return ApiResponse.success(authService.debugLogin(req.role), "디버그 로그인 성공")
     }
 
     /**
