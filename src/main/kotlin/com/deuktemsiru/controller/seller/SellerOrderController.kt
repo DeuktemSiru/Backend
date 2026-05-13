@@ -7,6 +7,10 @@ import com.deuktemsiru.security.AuthContext
 import com.deuktemsiru.service.OrderService
 import org.springframework.web.bind.annotation.*
 
+// ── Request DTOs ──────────────────────────────────────────────────────────────
+
+data class PickupConfirmRequest(val pickupCode: String)
+
 // ── Controller ────────────────────────────────────────────────────────────────
 
 @RestController
@@ -28,16 +32,10 @@ class SellerOrderController(
     }
 
     /**
-     * PATCH /api/v1/sellers/orders/{orderId}/status
-     * 주문 상태 변경 (PREPARING → READY → COMPLETED / REJECTED)
+     * GET /api/v1/sellers/orders/{orderId}
+     * 주문 상세 조회 (고객명·메뉴·수량·픽업시각)
      */
-    @PatchMapping("/{orderId}/status")
-    fun updateOrderStatus(
+    @GetMapping("/{orderId}")
+    fun getStoreOrder(
         @PathVariable orderId: Long,
-        @RequestBody req: UpdateOrderStatusRequest,
-    ): ApiResponse<OrderResponse> {
-        val sellerId = authContext.getCurrentMemberId()
-        val order = orderService.updateOrderStatus(sellerId, orderId, req)
-        return ApiResponse.success(order)
-    }
-}
+    ): ApiResponse<OrderResp

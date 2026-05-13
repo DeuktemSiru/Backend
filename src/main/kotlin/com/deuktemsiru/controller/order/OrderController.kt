@@ -37,19 +37,22 @@ class OrderController(
     }
 
     /**
-     * GET /api/v1/orders
-     * 내 주문 목록 조회
+     * GET /api/v1/orders/my
+     * 내 주문 목록 조회 (진행중·픽업완료 탭)
+     * @param status PENDING|CONFIRMED|PICKED_UP|CANCELLED (optional)
      */
-    @GetMapping
-    fun getMyOrders(): ApiResponse<List<OrderResponse>> {
+    @GetMapping("/my")
+    fun getMyOrders(
+        @RequestParam(required = false) status: String?,
+    ): ApiResponse<List<OrderResponse>> {
         val memberId = authContext.getCurrentMemberId()
-        val orders = orderService.getMyOrders(memberId)
+        val orders = orderService.getMyOrders(memberId, status)
         return ApiResponse.success(orders)
     }
 
     /**
      * GET /api/v1/orders/{orderId}
-     * 주문 상세 조회
+     * 주문 상세 조회 (픽업 코드 포함)
      */
     @GetMapping("/{orderId}")
     fun getOrder(
@@ -61,14 +64,10 @@ class OrderController(
 
     /**
      * PATCH /api/v1/orders/{orderId}/cancel
-     * 주문 취소
+     * 주문 취소 (픽업 전)
      * TODO: 취소 정책 및 환불 로직 구현 필요
      */
     @PatchMapping("/{orderId}/cancel")
     fun cancelOrder(
         @PathVariable orderId: Long,
-        @RequestBody(required = false) req: OrderCancelRequest?,
-    ): ApiResponse<OrderResponse> {
-        throw UnsupportedOperationException("주문 취소: 미구현 — 취소 정책 및 환불 로직 구현 필요")
-    }
-}
+        @Reques

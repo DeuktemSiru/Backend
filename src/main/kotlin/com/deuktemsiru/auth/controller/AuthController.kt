@@ -9,10 +9,13 @@ import com.deuktemsiru.common.ApiResponse
 import com.deuktemsiru.security.AuthContext
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
-import org.springframework.web.bind.annotation.PostMapping
-import org.springframework.web.bind.annotation.RequestBody
-import org.springframework.web.bind.annotation.RequestMapping
-import org.springframework.web.bind.annotation.RestController
+import org.springframework.web.bind.annotation.*
+
+// ── Request DTOs ──────────────────────────────────────────────────────────────
+
+data class SiruLinkRequest(val siruAccessToken: String)
+
+// ── Controller ────────────────────────────────────────────────────────────────
 
 @RestController
 @RequestMapping("/api/v1/auth")
@@ -55,12 +58,3 @@ class AuthController(
     /**
      * POST /api/v1/auth/logout
      * 로그아웃 — Refresh Token 전체 폐기 + FCM Token 비활성화
-     * Authorization: Bearer {accessToken} 필요
-     */
-    @PostMapping("/logout")
-    fun logout(): ApiResponse<Unit> {
-        val memberId = authContext.getCurrentMemberId()
-        authService.logout(memberId)
-        return ApiResponse.success(Unit, "로그아웃 성공")
-    }
-}

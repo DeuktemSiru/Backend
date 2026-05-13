@@ -13,6 +13,7 @@ import com.deuktemsiru.repository.StoreRepository
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.LocalDate
+import java.time.LocalTime
 
 @Service
 @Transactional(readOnly = true)
@@ -34,30 +35,37 @@ class SellerAppService(
 
     @Transactional
     fun createProduct(sellerId: Long, req: SaleItemRequest): SellerSaleItemResponse {
-        require(req.discountRate in 1..99) { "할인율은 1~99 사이여야 합니다." }
-        require(req.quantity > 0) { "판매 수량은 1개 이상이어야 합니다." }
+        require(req.quantityTotal > 0) { "판매 수량은 1개 이상이어야 합니다." }
+        require(req.discountPrice > 0) { "할인가는 1원 이상이어야 합니다." }
+        require(req.discountPrice < req.originalPrice) { "할인가는 정가보다 낮아야 합니다." }
 
         val store = sellerStore(sellerId)
-        val menuItem = menuItemRepository.findById(req.menuItemId)
-            .orElseThrow { NoSuchElementException("메뉴를 찾을 수 없습니다.") }
-        require(menuItem.store.storeId == store.storeId) { "내 매장의 메뉴만 판매 상품으로 등록할 수 있습니다." }
+        val menuItem = req.menuItemId?.let {
+            menuItemRepository.findById(it)
+                .orElseThrow { NoSuchElementException("메뉴를 찾을 수 없습니다.") }
+                .also { mi -> require(mi.store.storeId == store.storeId) { "내 매장의 메뉴만 판매 상품으로 등록할 수 있습니다." } }
+        }
 
-        val (pickupStart, pickupEnd) = parsePickupTimeSlot(req.pickupTimeSlot)
+        val pickupStart = LocalTime.parse(req.pickupStart)
+        val pickupEnd   = LocalTime.parse(req.pickupEnd)
+        val availableDate = LocalDate.parse(req.availableDate)
+
         val product = productRepository.save(
             Product(
                 store = store,
                 menuItem = menuItem,
-                name = menuItem.name,
-                description = menuItem.description,
-                thumbnailUrl = menuItem.imageUrl,
-                originalPrice = menuItem.originalPrice,
-                discountPrice = discountedPrice(menuItem.originalPrice, req.discountRate),
-                quantityTotal = req.quantity,
-                quantityRemaining = req.quantity,
-                allergenInfo = menuItem.allergenInfo,
+                name = req.name,
+                description = menuItem?.description,
+                thumbnailUrl = menuItem?.imageUrl,
+                originalPrice = req.originalPrice,
+                discountPrice = req.discountPrice,
+                quantityTotal = req.quantityTotal,
+                quantityRemaining = req.quantityTotal,
+                allergenInfo = req.allergenInfo ?: menuItem?.allergenInfo,
+                madeAt = req.madeAt,
                 pickupStart = pickupStart,
                 pickupEnd = pickupEnd,
-                availableDate = LocalDate.now(),
+                availableDate = availableDate,
             )
         )
         return SellerSaleItemResponse.from(product)
@@ -122,14 +130,20 @@ class SellerAppService(
             SellerMenuItemRequest(name = name, originalPrice = originalPrice, allergyInfo = allergyInfo),
             imageUrl,
         )
+        // multipart 등록 시 discountRate + quantity + pickupTimeSlot 으로 간이 Product 생성 (레거시 호환)
         if (discountRate != null && quantity != null && pickupTimeSlot != null) {
+            val (start, end) = parsePickupTimeSlot(pickupTimeSlot)
             createProduct(
                 sellerId,
                 SaleItemRequest(
                     menuItemId = menu.id,
-                    discountRate = discountRate,
-                    quantity = quantity,
-                    pickupTimeSlot = pickupTimeSlot,
+                    name = name,
+                    discountPrice = discountedPrice(originalPrice, discountRate),
+                    originalPrice = originalPrice,
+                    quantityTotal = quantity,
+                    pickupStart = start.toString(),
+                    pickupEnd = end.toString(),
+                    availableDate = LocalDate.now().toString(),
                 )
             )
         }
@@ -174,25 +188,4 @@ class SellerAppService(
         require(req.message.isNotBlank()) { "알림 내용을 입력해 주세요." }
         val store = sellerStore(sellerId)
         val sent = notificationRepository.save(
-            Notification(
-                member = store.owner,
-                relatedStoreId = store.storeId,
-                type = NotificationType.EVENT,
-                title = store.name,
-                body = req.message,
-            )
-        )
-        return SellerNotificationResponse(
-            id = sent.notificationId,
-            storeId = store.storeId,
-            storeName = store.name,
-            message = sent.body,
-            sentAt = sent.createdAt.toString(),
-            recipientCount = 1,
-        )
-    }
-
-    private fun sellerStore(sellerId: Long) =
-        storeRepository.findByOwner(memberService.findMember(sellerId))
-            .orElseThrow { NoSuchElementException("등록된 가게가 없습니다.") }
-}
+            Not

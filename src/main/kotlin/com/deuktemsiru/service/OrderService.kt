@@ -60,8 +60,14 @@ class OrderService(
         return orderRepository.save(order)
     }
 
-    fun getMyOrders(consumerId: Long): List<OrderResponse> {
-        return getMyOrderEntities(consumerId).map { OrderResponse.from(it) }
+    fun getMyOrders(consumerId: Long, statusFilter: String? = null): List<OrderResponse> {
+        val orders = getMyOrderEntities(consumerId)
+        val filtered = if (statusFilter != null) {
+            val target = runCatching { OrderStatus.valueOf(statusFilter.uppercase()) }
+                .getOrElse { throw IllegalArgumentException("지원하지 않는 주문 상태입니다: $statusFilter") }
+            orders.filter { it.status == target }
+        } else orders
+        return filtered.map { OrderResponse.from(it) }
     }
 
     fun getMyOrderEntities(consumerId: Long): List<Orders> {
@@ -81,6 +87,16 @@ class OrderService(
 
     fun getStoreOrders(sellerId: Long): List<OrderResponse> {
         return getStoreOrderEntities(sellerId).map { OrderResponse.from(it) }
+    }
+
+    fun getStoreOrder(sellerId: Long, orderId: Long): OrderResponse {
+        val seller = memberService.findMember(sellerId)
+        val store = storeRepository.findByOwner(seller)
+            .orElseThrow { NoSuchElementException("등록된 가게가 없습니다.") }
+        val order = orderRepository.findById(orderId)
+            .orElseThrow { NoSuchElementException("주문을 찾을 수 없습니다.") }
+        require(order.store.storeId == store.storeId) { "접근 권한이 없습니다." }
+        return OrderResponse.from(order)
     }
 
     fun getStoreOrderEntities(sellerId: Long): List<Orders> {
@@ -246,28 +262,4 @@ class OrderService(
                 TopMenu(
                     name = product.name,
                     emoji = categoryEmoji(product.store.categories.firstOrNull()?.category?.name),
-                    count = items.sumOf { it.quantity },
-                )
-            }
-            .sortedByDescending { it.count }
-            .take(3)
-
-    private fun generatePickupCode(): String {
-        val chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-        repeat(10) {
-            val code = (1..4).map { chars.random() }.joinToString("")
-            if (!orderRepository.existsByPickupCode(code)) return code
-        }
-        error("픽업 코드를 생성할 수 없습니다.")
-    }
-
-    private fun canTransition(current: OrderStatus, next: OrderStatus): Boolean {
-        if (current == next) return true
-        return when (current) {
-            OrderStatus.PENDING -> next == OrderStatus.CONFIRMED || next == OrderStatus.CANCELLED
-            OrderStatus.CONFIRMED -> next == OrderStatus.PICKED_UP || next == OrderStatus.CANCELLED
-            OrderStatus.PICKED_UP,
-            OrderStatus.CANCELLED -> false
-        }
-    }
-}
+                    count = items.sumOf { it.quan
