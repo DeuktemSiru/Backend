@@ -7,10 +7,16 @@ import com.deuktemsiru.entity.Store
 import java.time.LocalTime
 
 data class SaleItemRequest(
-    val menuItemId: Long,
-    val discountRate: Int,
-    val quantity: Int,
-    val pickupTimeSlot: String,
+    val menuItemId: Long? = null,       // 기존 메뉴 선택 시 사용 (optional)
+    val name: String,                    // 상품명 (직접 입력 또는 메뉴 이름 사용)
+    val discountPrice: Int,             // 할인가 (원)
+    val originalPrice: Int,             // 정가 (원)
+    val quantityTotal: Int,             // 판매 수량
+    val madeAt: String? = null,         // 만들어진 시간 HH:mm
+    val pickupStart: String,            // 픽업 시작 HH:mm
+    val pickupEnd: String,              // 픽업 마감 HH:mm
+    val availableDate: String,          // 판매 날짜 yyyy-MM-dd
+    val allergenInfo: String? = null,   // 알레르기 성분
 )
 
 data class UpdateSaleStatusRequest(
@@ -126,13 +132,4 @@ internal fun discountRate(originalPrice: Int, discountedPrice: Int): Int =
 internal fun discountedPrice(originalPrice: Int, discountRate: Int): Int =
     (originalPrice * (100 - discountRate) / 100).coerceAtLeast(0)
 
-internal fun parsePickupTimeSlot(slot: String): Pair<LocalTime, LocalTime> {
-    val parts = slot.split("-", "~").map { it.trim() }.filter { it.isNotBlank() }
-    val start = parts.getOrNull(0)?.let { LocalTime.parse(it) } ?: LocalTime.of(17, 0)
-    val end = parts.getOrNull(1)?.let { LocalTime.parse(it) } ?: start.plusHours(2)
-    return start to end
-}
-
-internal fun parseProductStatus(status: String): ProductStatus =
-    runCatching { ProductStatus.valueOf(status.uppercase()) }
-        .getOrElse { throw IllegalArgumentException("지원하지 않는 판매 상태입니다: $status") }
+internal fun parseP

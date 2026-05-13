@@ -44,10 +44,10 @@ class SellerProductController(
     }
 
     /**
-     * PATCH /api/v1/sellers/products/{productId}
-     * 판매 상품 상태 수정 (수량, 품절 여부 등)
+     * PATCH /api/v1/sellers/products/{productId}/status
+     * 판매 상품 상태 변경 (SOLD_OUT / EXPIRED)
      */
-    @PatchMapping("/{productId}")
+    @PatchMapping("/{productId}/status")
     fun updateProduct(
         @PathVariable productId: Long,
         @RequestBody req: UpdateSaleStatusRequest,
@@ -67,5 +67,4 @@ class SellerProductController(
         val sellerId = authContext.getCurrentMemberId()
         sellerAppService.deleteProduct(sellerId, productId)
         return ResponseEntity.noContent().build()
-    }
-}
+ 
