@@ -1,6 +1,7 @@
 package com.deuktemsiru.entity
 
 import jakarta.persistence.*
+import io.swagger.v3.oas.annotations.media.Schema
 import org.hibernate.annotations.CreationTimestamp
 import org.hibernate.annotations.UpdateTimestamp
 import java.time.LocalDate
@@ -58,6 +59,11 @@ class Member(
     var updatedAt: LocalDateTime = LocalDateTime.now(),
 )
 
+@Schema(description = "회원 가입 제공자", allowableValues = ["KAKAO"])
 enum class MemberProvider { KAKAO }
+
+@Schema(description = "회원 역할", allowableValues = ["CONSUMER", "SELLER"])
 enum class MemberRole { CONSUMER, SELLER }
+
+@Schema(description = "회원 성별", allowableValues = ["MALE", "FEMALE", "NONE"])
 enum class MemberGender { MALE, FEMALE, NONE }

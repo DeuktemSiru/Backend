@@ -8,15 +8,20 @@ import com.deuktemsiru.auth.dto.TokenResponse
 import com.deuktemsiru.auth.service.AuthService
 import com.deuktemsiru.common.ApiResponse
 import com.deuktemsiru.security.AuthContext
+import io.swagger.v3.oas.annotations.Operation
+import io.swagger.v3.oas.annotations.tags.Tag
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
-import org.springframework.web.server.ResponseStatusException
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RestController
+import org.springframework.web.server.ResponseStatusException
+import io.swagger.v3.oas.annotations.responses.ApiResponse as SwaggerApiResponse
+import io.swagger.v3.oas.annotations.responses.ApiResponses as SwaggerApiResponses
 
+@Tag(name = "Auth", description = "카카오 로그인, 개발용 로그인, 토큰 갱신, 로그아웃 API")
 @RestController
 @RequestMapping("/api/v1/auth")
 class AuthController(
@@ -32,6 +37,15 @@ class AuthController(
      * - 신규 회원: 201 Created
      * - 기존 회원: 200 OK
      */
+    @Operation(summary = "카카오 로그인", description = "카카오 액세스 토큰으로 로그인합니다. 신규 회원은 자동 가입 후 201을 반환합니다.")
+    @SwaggerApiResponses(
+        value = [
+            SwaggerApiResponse(responseCode = "200", description = "기존 회원 로그인 성공"),
+            SwaggerApiResponse(responseCode = "201", description = "신규 회원 가입 후 로그인 성공"),
+            SwaggerApiResponse(responseCode = "400", description = "잘못된 요청 또는 카카오 토큰 검증 실패"),
+            SwaggerApiResponse(responseCode = "500", description = "서버 오류"),
+        ],
+    )
     @PostMapping("/kakao/login")
     fun kakaoLogin(
         @RequestBody req: KakaoLoginRequest,
@@ -49,6 +63,14 @@ class AuthController(
      * POST /api/v1/auth/debug/login
      * 로컬 개발 전용 로그인. 카카오 SDK 없이 샘플 사용자 JWT를 발급합니다.
      */
+    @Operation(summary = "개발용 로그인", description = "로컬 개발 환경에서 카카오 SDK 없이 지정한 역할의 샘플 사용자 JWT를 발급합니다.")
+    @SwaggerApiResponses(
+        value = [
+            SwaggerApiResponse(responseCode = "200", description = "디버그 로그인 성공"),
+            SwaggerApiResponse(responseCode = "404", description = "디버그 로그인 비활성화"),
+            SwaggerApiResponse(responseCode = "500", description = "서버 오류"),
+        ],
+    )
     @PostMapping("/debug/login")
     fun debugLogin(
         @RequestBody req: DebugLoginRequest,
@@ -66,6 +88,14 @@ class AuthController(
      * POST /api/v1/auth/refresh
      * Access Token 갱신 (AT: 30분 / RT: 14일)
      */
+    @Operation(summary = "액세스 토큰 갱신", description = "리프레시 토큰으로 새 액세스 토큰을 발급합니다.")
+    @SwaggerApiResponses(
+        value = [
+            SwaggerApiResponse(responseCode = "200", description = "토큰 갱신 성공"),
+            SwaggerApiResponse(responseCode = "401", description = "유효하지 않은 리프레시 토큰"),
+            SwaggerApiResponse(responseCode = "500", description = "서버 오류"),
+        ],
+    )
     @PostMapping("/refresh")
     fun refresh(
         @RequestBody req: TokenRefreshRequest,
@@ -79,6 +109,14 @@ class AuthController(
      * 로그아웃 — Refresh Token 전체 폐기 + FCM Token 비활성화
      * Authorization: Bearer {accessToken} 필요
      */
+    @Operation(summary = "로그아웃", description = "현재 회원의 리프레시 토큰을 폐기하고 FCM 토큰을 비활성화합니다.")
+    @SwaggerApiResponses(
+        value = [
+            SwaggerApiResponse(responseCode = "200", description = "로그아웃 성공"),
+            SwaggerApiResponse(responseCode = "401", description = "인증 실패"),
+            SwaggerApiResponse(responseCode = "500", description = "서버 오류"),
+        ],
+    )
     @PostMapping("/logout")
     fun logout(): ApiResponse<Unit> {
         val memberId = authContext.getCurrentMemberId()
