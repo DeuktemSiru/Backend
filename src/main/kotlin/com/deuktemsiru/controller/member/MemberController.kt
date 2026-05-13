@@ -72,4 +72,44 @@ class MemberController(
     /**
      * DELETE /api/v1/members/me
      * 회원 탈퇴 (소프트 딜리트 — deleted_at 기록)
-     * TODO: 
+     * TODO: 탈퇴 처리 로직 구현 필요
+     */
+    @DeleteMapping("/me")
+    fun deleteMyAccount(): ApiResponse<Unit> {
+        throw UnsupportedOperationException("회원 탈퇴: 미구현 — 탈퇴 정책 및 처리 로직 구현 필요")
+    }
+
+    /**
+     * GET /api/v1/members/me/stats
+     * ESG 대시보드 — 절약 금액·탄소 저감량
+     * TODO: MemberStats 엔티티 기반 집계 구현 필요
+     */
+    @GetMapping("/me/stats")
+    fun getMyStats(): ApiResponse<UserApiResponse> {
+        val memberId = authContext.getCurrentMemberId()
+        val member = memberService.findMember(memberId)
+        return ApiResponse.success(UserApiResponse.from(member))
+    }
+
+    /**
+     * GET /api/v1/members/me/notification-settings
+     * 알림 설정 조회 (소비자·판매자 공통)
+     * TODO: Member 엔티티에 알림 설정 필드 추가 필요
+     */
+    @GetMapping("/me/notification-settings")
+    fun getNotificationSettings(): ApiResponse<NotificationSettingsResponse> {
+        throw UnsupportedOperationException("알림 설정 조회: 미구현 — Member 엔티티에 알림 설정 필드 추가 필요")
+    }
+
+    /**
+     * PUT /api/v1/members/me/notification-settings
+     * 알림 설정 변경 (ON/OFF 토글)
+     * TODO: Member 엔티티에 알림 설정 필드 추가 필요
+     */
+    @PutMapping("/me/notification-settings")
+    fun updateNotificationSettings(
+        @RequestBody req: NotificationSettingsRequest,
+    ): ApiResponse<NotificationSettingsResponse> {
+        throw UnsupportedOperationException("알림 설정 변경: 미구현 — Member 엔티티에 알림 설정 필드 추가 필요")
+    }
+}

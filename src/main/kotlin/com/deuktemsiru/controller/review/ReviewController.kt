@@ -50,4 +50,6 @@ class ReviewController {
     fun deleteReview(
         @PathVariable reviewId: Long,
     ): ApiResponse<Unit> {
-        throw UnsupportedOperationException("리뷰 삭제: 미구현 — Review 엔티티 및 ReviewService 구현 필�
+        throw UnsupportedOperationException("리뷰 삭제: 미구현 — Review 엔티티 및 ReviewService 구현 필요")
+    }
+}

@@ -66,4 +66,15 @@ class CartController {
         @PathVariable cartItemId: Long,
     ): ApiResponse<Unit> {
         throw UnsupportedOperationException("장바구니 삭제: 미구현 — Cart 엔티티 및 CartService 구현 필요")
- 
+    }
+
+    /**
+     * DELETE /api/v1/cart
+     * 장바구니 전체 비우기 (주문 완료 후 자동 호출)
+     * TODO: Cart 엔티티 및 CartService 구현 필요
+     */
+    @DeleteMapping
+    fun clearCart(): ApiResponse<Unit> {
+        throw UnsupportedOperationException("장바구니 전체 비우기: 미구현 — Cart 엔티티 및 CartService 구현 필요")
+    }
+}

@@ -190,4 +190,3 @@ class SellerAppService(
         storeRepository.findByOwner(memberService.findMember(sellerId))
             .orElseThrow { NoSuchElementException("등록된 가게가 없습니다.") }
 }
-                                                                                                                                   

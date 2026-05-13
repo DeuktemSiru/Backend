@@ -28,4 +28,11 @@ class SellerSalesController(
     ): ApiResponse<SalesResponse> {
         val sellerId = authContext.getCurrentMemberId()
         // spec: DAY/WEEK/MONTH → service 내부: weekly/monthly
-        val normalizedPeriod = when (period.
+        val normalizedPeriod = when (period.uppercase()) {
+            "MONTH" -> "monthly"
+            else    -> "weekly"   // DAY, WEEK 모두 weekly 집계
+        }
+        val stats = orderService.getSalesStats(sellerId, normalizedPeriod, offset)
+        return ApiResponse.success(stats)
+    }
+}

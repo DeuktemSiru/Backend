@@ -137,4 +137,6 @@ internal fun categoryEmoji(category: String?) = when (category) {
     "BAKERY" -> "🥐"
     "CAFE" -> "☕"
     "RESTAURANT" -> "🍱"
-    "GROCERY" -> "
+    "GROCERY" -> "🥦"
+    else -> "🍽️"
+}
