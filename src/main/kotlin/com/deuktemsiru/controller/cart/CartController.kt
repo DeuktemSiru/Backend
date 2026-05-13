@@ -58,7 +58,7 @@ class CartController {
 
     /**
      * DELETE /api/v1/cart/{cartItemId}
-     * 장바구니 상품 제거
+     * 장바구니 특정 상품 제거
      * TODO: Cart 엔티티 및 CartService 구현 필요
      */
     @DeleteMapping("/{cartItemId}")
@@ -66,5 +66,4 @@ class CartController {
         @PathVariable cartItemId: Long,
     ): ApiResponse<Unit> {
         throw UnsupportedOperationException("장바구니 삭제: 미구현 — Cart 엔티티 및 CartService 구현 필요")
-    }
-}
+ 

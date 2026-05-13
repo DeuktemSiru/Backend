@@ -4,7 +4,6 @@ import com.deuktemsiru.entity.MenuItem
 import com.deuktemsiru.entity.Product
 import com.deuktemsiru.entity.ProductStatus
 import com.deuktemsiru.entity.Store
-import java.time.LocalTime
 
 data class SaleItemRequest(
     val menuItemId: Long? = null,       // 기존 메뉴 선택 시 사용 (optional)
@@ -55,10 +54,9 @@ data class SellerSaleItemResponse(
 
 data class SellerMenuItemRequest(
     val name: String,
-    val emoji: String = "",
+    val description: String? = null,
     val originalPrice: Int,
-    val costPrice: Int? = null,
-    val allergyInfo: String? = null,
+    val allergenInfo: String? = null,
 )
 
 data class SellerMenuItemUpdateRequest(
@@ -129,7 +127,6 @@ data class SellerNotificationResponse(
 internal fun discountRate(originalPrice: Int, discountedPrice: Int): Int =
     if (originalPrice > 0) ((1.0 - discountedPrice.toDouble() / originalPrice) * 100).toInt() else 0
 
-internal fun discountedPrice(originalPrice: Int, discountRate: Int): Int =
-    (originalPrice * (100 - discountRate) / 100).coerceAtLeast(0)
-
-internal fun parseP
+internal fun parseProductStatus(status: String): ProductStatus =
+    runCatching { ProductStatus.valueOf(status.uppercase()) }
+        .getOrElse { throw IllegalArgumentException("지원하지 않는 판매 상

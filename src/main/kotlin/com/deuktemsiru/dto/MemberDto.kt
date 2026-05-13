@@ -1,7 +1,10 @@
 package com.deuktemsiru.dto
 
 import com.deuktemsiru.entity.Member
+import com.deuktemsiru.entity.MemberGender
 import com.deuktemsiru.entity.MemberRole
+import java.time.LocalDate
+import java.time.LocalDateTime
 
 data class MemberResponse(
     val memberId: Long,
@@ -11,6 +14,10 @@ data class MemberResponse(
     val role: MemberRole,
     val profileImageUrl: String?,
     val phone: String?,
+    val gender: MemberGender?,
+    val birth: LocalDate?,
+    val status: Boolean,
+    val createdAt: LocalDateTime,
 ) {
     companion object {
         fun from(member: Member) = MemberResponse(
@@ -21,6 +28,10 @@ data class MemberResponse(
             role = member.role,
             profileImageUrl = member.profileImageUrl,
             phone = member.phone,
+            gender = member.gender,
+            birth = member.birth,
+            status = member.status,
+            createdAt = member.createdAt,
         )
     }
 }
@@ -35,16 +46,4 @@ data class UserApiResponse(
     val couponCount: Int,
     val co2Saved: Float,
 ) {
-    companion object {
-        fun from(member: Member) = UserApiResponse(
-            id = member.memberId,
-            nickname = member.nickname,
-            role = member.role.name,
-            grade = "WELCOME",
-            totalSavings = 0,
-            points = 0,
-            couponCount = 0,
-            co2Saved = 0f,
-        )
-    }
-}
+  

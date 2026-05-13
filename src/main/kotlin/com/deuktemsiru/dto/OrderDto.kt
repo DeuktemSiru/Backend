@@ -17,7 +17,7 @@ data class OrderItemRequest(
 data class CreateOrderRequest(
     val storeId: Long,
     val items: List<OrderItemRequest>,
-    val pickupTime: String? = null,
+    val paymentMethod: String? = null,  // SIRU / CARD / CASH (TBD)
 )
 
 data class OrderItemResponse(
@@ -114,21 +114,22 @@ data class AppOrderResponse(
 }
 
 data class SalesResponse(
-    val todaySales: Int,
-    val todayOrderCount: Int,
-    val salesData: List<DailySales>,
+    val totalAmount: Int,
+    val totalOrders: Int,
+    val chartData: List<DailySales>,
     val topProducts: List<TopProduct>,
+    val carbonSavedKg: Double = 0.0,
 )
 
 data class DailySales(val date: String, val amount: Int)
-data class TopProduct(val name: String, val count: Int)
+data class TopProduct(val productName: String, val soldCount: Int)
 
 data class TopMenu(val name: String, val emoji: String, val count: Int)
 
 data class SellerSalesResponse(
-    val todaySales: Int,
-    val todayOrderCount: Int,
-    val salesData: List<DailySales>,
+    val totalAmount: Int,
+    val totalOrders: Int,
+    val chartData: List<DailySales>,
     val topMenus: List<TopMenu>,
 )
 
@@ -136,6 +137,4 @@ internal fun categoryEmoji(category: String?) = when (category) {
     "BAKERY" -> "🥐"
     "CAFE" -> "☕"
     "RESTAURANT" -> "🍱"
-    "GROCERY" -> "🥦"
-    else -> "🍽️"
-}
+    "GROCERY" -> "

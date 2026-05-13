@@ -107,7 +107,7 @@ class SellerAppService(
                 name = req.name,
                 originalPrice = req.originalPrice,
                 imageUrl = imageUrl,
-                allergenInfo = req.allergyInfo,
+                allergenInfo = req.allergenInfo,
             )
         )
         return SellerMenuItemResponse.from(menuItem)
@@ -117,37 +117,17 @@ class SellerAppService(
     fun createMenuWithImage(
         sellerId: Long,
         name: String,
+        description: String?,
         originalPrice: Int,
-        allergyInfo: String?,
-        discountRate: Int?,
-        quantity: Int?,
-        pickupTimeSlot: String?,
+        allergenInfo: String?,
         image: org.springframework.web.multipart.MultipartFile?,
     ): SellerMenuItemResponse {
         val imageUrl = menuImageStorageService.save(image)
-        val menu = createMenu(
+        return createMenu(
             sellerId,
-            SellerMenuItemRequest(name = name, originalPrice = originalPrice, allergyInfo = allergyInfo),
+            SellerMenuItemRequest(name = name, description = description, originalPrice = originalPrice, allergenInfo = allergenInfo),
             imageUrl,
         )
-        // multipart 등록 시 discountRate + quantity + pickupTimeSlot 으로 간이 Product 생성 (레거시 호환)
-        if (discountRate != null && quantity != null && pickupTimeSlot != null) {
-            val (start, end) = parsePickupTimeSlot(pickupTimeSlot)
-            createProduct(
-                sellerId,
-                SaleItemRequest(
-                    menuItemId = menu.id,
-                    name = name,
-                    discountPrice = discountedPrice(originalPrice, discountRate),
-                    originalPrice = originalPrice,
-                    quantityTotal = quantity,
-                    pickupStart = start.toString(),
-                    pickupEnd = end.toString(),
-                    availableDate = LocalDate.now().toString(),
-                )
-            )
-        }
-        return menu
     }
 
     @Transactional
@@ -188,4 +168,26 @@ class SellerAppService(
         require(req.message.isNotBlank()) { "알림 내용을 입력해 주세요." }
         val store = sellerStore(sellerId)
         val sent = notificationRepository.save(
-            Not
+            Notification(
+                member = store.owner,
+                relatedStoreId = store.storeId,
+                type = NotificationType.EVENT,
+                title = store.name,
+                body = req.message,
+            )
+        )
+        return SellerNotificationResponse(
+            id = sent.notificationId,
+            storeId = store.storeId,
+            storeName = store.name,
+            message = sent.body,
+            sentAt = sent.createdAt.toString(),
+            recipientCount = 1,
+        )
+    }
+
+    private fun sellerStore(sellerId: Long) =
+        storeRepository.findByOwner(memberService.findMember(sellerId))
+            .orElseThrow { NoSuchElementException("등록된 가게가 없습니다.") }
+}
+                                                                                                                                   
