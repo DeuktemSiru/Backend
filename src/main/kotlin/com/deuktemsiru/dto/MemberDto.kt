@@ -3,9 +3,11 @@ package com.deuktemsiru.dto
 import com.deuktemsiru.entity.Member
 import com.deuktemsiru.entity.MemberGender
 import com.deuktemsiru.entity.MemberRole
+import com.deuktemsiru.entity.MemberStats
 import java.time.LocalDate
 import java.time.LocalDateTime
 
+// ── GET /members/me ───────────────────────────────────────────────────────────
 data class MemberResponse(
     val memberId: Long,
     val email: String,
@@ -36,26 +38,23 @@ data class MemberResponse(
     }
 }
 
-data class UserApiResponse(
-    val id: Long,
-    val nickname: String,
-    val role: String,
-    val grade: String,
-    val totalSavings: Int,
-    val points: Int,
-    val couponCount: Int,
-    val co2Saved: Float,
+// ── GET /members/me/stats ─────────────────────────────────────────────────────
+data class MemberStatsResponse(
+    val totalSavedAmount: Int,
+    val totalCarbonSavedKg: Double,
+    val totalOrders: Int,
 ) {
     companion object {
-        fun from(member: Member) = UserApiResponse(
-            id = member.memberId,
-            nickname = member.nickname,
-            role = member.role.name,
-            grade = "WELCOME",
-            totalSavings = 0,
-            points = 0,
-            couponCount = 0,
-            co2Saved = 0f,
+        fun from(stats: MemberStats) = MemberStatsResponse(
+            totalSavedAmount = stats.totalSavedAmount,
+            totalCarbonSavedKg = stats.totalCarbonSavedKg,
+            totalOrders = stats.totalOrders,
+        )
+
+        fun empty() = MemberStatsResponse(
+            totalSavedAmount = 0,
+            totalCarbonSavedKg = 0.0,
+            totalOrders = 0,
         )
     }
 }

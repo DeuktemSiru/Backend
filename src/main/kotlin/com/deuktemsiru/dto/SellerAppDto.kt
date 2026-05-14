@@ -5,53 +5,52 @@ import com.deuktemsiru.entity.Product
 import com.deuktemsiru.entity.ProductStatus
 import com.deuktemsiru.entity.Store
 
+// ── 상품 등록 요청 ─────────────────────────────────────────────────────────────
 data class SaleItemRequest(
-    val menuItemId: Long? = null,       // 기존 메뉴 선택 시 사용 (optional)
-    val name: String,                    // 상품명 (직접 입력 또는 메뉴 이름 사용)
-    val discountPrice: Int,             // 할인가 (원)
-    val originalPrice: Int,             // 정가 (원)
-    val quantityTotal: Int,             // 판매 수량
-    val madeAt: String? = null,         // 만들어진 시간 HH:mm
-    val pickupStart: String,            // 픽업 시작 HH:mm
-    val pickupEnd: String,              // 픽업 마감 HH:mm
-    val availableDate: String,          // 판매 날짜 yyyy-MM-dd
-    val allergenInfo: String? = null,   // 알레르기 성분
+    val menuItemId: Long? = null,
+    val name: String,
+    val discountPrice: Int,
+    val originalPrice: Int,
+    val quantityTotal: Int,
+    val madeAt: String? = null,
+    val pickupStart: String,
+    val pickupEnd: String,
+    val availableDate: String,
+    val allergenInfo: String? = null,
 )
 
 data class UpdateSaleStatusRequest(
     val status: String,
 )
 
+// ── 판매자 상품 목록 응답 (GET /sellers/products) ─────────────────────────────
 data class SellerSaleItemResponse(
-    val id: Long,
-    val menuItemId: Long,
+    val productId: Long,
     val name: String,
-    val emoji: String,
     val originalPrice: Int,
-    val discountedPrice: Int,
-    val discountRate: Int,
-    val remainingItems: Int,
-    val totalItems: Int,
+    val discountPrice: Int,
+    val quantityTotal: Int,
+    val quantityRemaining: Int,
     val status: String,
-    val pickupTimeSlot: String,
+    val pickupStart: String,
+    val pickupEnd: String,
 ) {
     companion object {
         fun from(product: Product) = SellerSaleItemResponse(
-            id = product.productId,
-            menuItemId = product.menuItem?.menuItemId ?: product.productId,
+            productId = product.productId,
             name = product.name,
-            emoji = categoryEmoji(product.store.categories.firstOrNull()?.category?.name),
             originalPrice = product.originalPrice,
-            discountedPrice = product.discountPrice,
-            discountRate = discountRate(product.originalPrice, product.discountPrice),
-            remainingItems = product.quantityRemaining,
-            totalItems = product.quantityTotal,
+            discountPrice = product.discountPrice,
+            quantityTotal = product.quantityTotal,
+            quantityRemaining = product.quantityRemaining,
             status = product.status.name,
-            pickupTimeSlot = "${product.pickupStart}-${product.pickupEnd}",
+            pickupStart = product.pickupStart.toString(),
+            pickupEnd = product.pickupEnd.toString(),
         )
     }
 }
 
+// ── 메뉴 마스터 요청/응답 ──────────────────────────────────────────────────────
 data class SellerMenuItemRequest(
     val name: String,
     val description: String? = null,
@@ -65,52 +64,55 @@ data class SellerMenuItemUpdateRequest(
 )
 
 data class SellerMenuItemResponse(
-    val id: Long,
+    val menuItemId: Long,
     val name: String,
-    val emoji: String,
-    val imageUrl: String? = null,
+    val imageUrl: String?,
     val originalPrice: Int,
+    val allergenInfo: String?,
+    val isActive: Boolean,
 ) {
     companion object {
         fun from(item: MenuItem) = SellerMenuItemResponse(
-            id = item.menuItemId,
+            menuItemId = item.menuItemId,
             name = item.name,
-            emoji = categoryEmoji(item.store.categories.firstOrNull()?.category?.name),
             imageUrl = item.imageUrl,
             originalPrice = item.originalPrice,
+            allergenInfo = item.allergenInfo,
+            isActive = item.isActive,
         )
     }
 }
 
+// ── 판매자 가게 조회 응답 (GET /sellers/stores/my) ────────────────────────────
 data class SellerStoreResponse(
-    val id: Long,
+    val storeId: Long,
     val name: String,
-    val category: String,
-    val address: String,
-    val phone: String,
-    val closingTime: String,
-) {
-    companion object {
-        fun from(store: Store): SellerStoreResponse {
-            val closingTime = store.products.maxOfOrNull { it.pickupEnd }?.toString() ?: "21:00"
-            return SellerStoreResponse(
-                id = store.storeId,
-                name = store.name,
-                category = store.categories.firstOrNull()?.category?.name ?: "OTHER",
-                address = store.address,
-                phone = store.phone.orEmpty(),
-                closingTime = closingTime,
-            )
-        }
-    }
-}
-
-data class SellerUpdateStoreRequest(
-    val address: String? = null,
-    val phone: String? = null,
-    val closingTime: String? = null,
+    val isActive: Boolean,
+    val isVerified: Boolean,
+    val todayProductCount: Int,
+    val pendingOrderCount: Int,
+    val ratingAvg: Double,
+    val reviewCount: Int,
 )
 
+// ── 가게 수정 요청 ─────────────────────────────────────────────────────────────
+data class SellerUpdateStoreRequest(
+    val description: String? = null,
+    val phone: String? = null,
+)
+
+// ── 가게 등록 요청 (POST /sellers/stores) ────────────────────────────────────
+data class CreateStoreRequest(
+    val name: String,
+    val description: String? = null,
+    val address: String,
+    val latitude: Double,
+    val longitude: Double,
+    val phone: String? = null,
+    val categories: List<String>,
+)
+
+// ── 알림 발송 ─────────────────────────────────────────────────────────────────
 data class SendNotificationRequest(
     val message: String,
 )
@@ -129,4 +131,4 @@ internal fun discountRate(originalPrice: Int, discountedPrice: Int): Int =
 
 internal fun parseProductStatus(status: String): ProductStatus =
     runCatching { ProductStatus.valueOf(status.uppercase()) }
-        .getOrElse { throw IllegalArgumentException("지원하지 않는 판매 상
+        .getOrElse { throw IllegalArgumentException("지원하지 않는 판매 상태: $status") }

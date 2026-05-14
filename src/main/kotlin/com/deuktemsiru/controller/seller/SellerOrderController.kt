@@ -1,7 +1,7 @@
 package com.deuktemsiru.controller.seller
 
 import com.deuktemsiru.common.ApiResponse
-import com.deuktemsiru.dto.OrderResponse
+import com.deuktemsiru.dto.OrderDetailResponse
 import com.deuktemsiru.dto.UpdateOrderStatusRequest
 import com.deuktemsiru.security.AuthContext
 import com.deuktemsiru.service.OrderService
@@ -25,7 +25,7 @@ class SellerOrderController(
      * 내 가게 주문 목록 조회
      */
     @GetMapping
-    fun getStoreOrders(): ApiResponse<List<OrderResponse>> {
+    fun getStoreOrders(): ApiResponse<List<OrderDetailResponse>> {
         val sellerId = authContext.getCurrentMemberId()
         val orders = orderService.getStoreOrders(sellerId)
         return ApiResponse.success(orders)
@@ -38,7 +38,7 @@ class SellerOrderController(
     @GetMapping("/{orderId}")
     fun getStoreOrder(
         @PathVariable orderId: Long,
-    ): ApiResponse<OrderResponse> {
+    ): ApiResponse<OrderDetailResponse> {
         val sellerId = authContext.getCurrentMemberId()
         val order = orderService.getStoreOrder(sellerId, orderId)
         return ApiResponse.success(order)
@@ -52,10 +52,10 @@ class SellerOrderController(
     fun confirmPickup(
         @PathVariable orderId: Long,
         @RequestBody req: PickupConfirmRequest,
-    ): ApiResponse<OrderResponse> {
+    ): ApiResponse<OrderDetailResponse> {
         val sellerId = authContext.getCurrentMemberId()
         val order = orderService.verifyPickupCode(sellerId, req.pickupCode)
-        return ApiResponse.success(OrderResponse.from(order))
+        return ApiResponse.success(order)
     }
 
     /**
@@ -66,7 +66,7 @@ class SellerOrderController(
     fun updateOrderStatus(
         @PathVariable orderId: Long,
         @RequestBody req: UpdateOrderStatusRequest,
-    ): ApiResponse<OrderResponse> {
+    ): ApiResponse<OrderDetailResponse> {
         val sellerId = authContext.getCurrentMemberId()
         val order = orderService.updateOrderStatus(sellerId, orderId, req)
         return ApiResponse.success(order)

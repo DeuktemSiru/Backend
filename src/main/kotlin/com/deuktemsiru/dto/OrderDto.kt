@@ -5,113 +5,118 @@ import com.deuktemsiru.entity.OrderStatus
 import com.deuktemsiru.entity.Orders
 import java.time.LocalDateTime
 
+// ── 요청 ─────────────────────────────────────────────────────────────────────
+
 data class OrderItemRequest(
-    val productId: Long? = null,
-    val menuItemId: Long? = null,
+    val productId: Long,
     val quantity: Int,
-) {
-    fun resolvedProductId(): Long =
-        productId ?: menuItemId ?: throw IllegalArgumentException("상품 ID가 없습니다.")
-}
+)
 
 data class CreateOrderRequest(
-    val storeId: Long,
     val items: List<OrderItemRequest>,
     val paymentMethod: String? = null,  // SIRU / CARD / CASH (TBD)
 )
 
-data class OrderItemResponse(
-    val productId: Long,
-    val name: String,
+// ── 응답 공통 ─────────────────────────────────────────────────────────────────
+
+data class PaymentInfo(
+    val method: String,
+    val status: String,
+)
+
+// ── POST /orders 응답 ─────────────────────────────────────────────────────────
+data class CreateOrderResponse(
+    val orderId: Long,
+    val pickupCode: String?,
+    val status: OrderStatus,
+    val totalPrice: Int,
+    val payment: PaymentInfo,
+) {
+    companion object {
+        fun from(order: Orders, paymentMethod: String?) = CreateOrderResponse(
+            orderId = order.orderId,
+            pickupCode = order.pickupCode,
+            status = order.status,
+            totalPrice = order.totalPrice,
+            payment = PaymentInfo(
+                method = paymentMethod ?: "CASH",
+                status = "PENDING",
+            ),
+        )
+    }
+}
+
+// ── GET /orders/{orderId} 응답 ────────────────────────────────────────────────
+data class OrderItemDetailResponse(
+    val productName: String,
     val quantity: Int,
     val unitPrice: Int,
 ) {
     companion object {
-        fun from(item: OrderItem) = OrderItemResponse(
-            productId = item.product.productId,
-            name = item.product.name,
+        fun from(item: OrderItem) = OrderItemDetailResponse(
+            productName = item.product.name,
             quantity = item.quantity,
             unitPrice = item.unitPrice,
         )
     }
 }
 
-data class OrderResponse(
+data class OrderDetailResponse(
     val orderId: Long,
-    val storeId: Long,
-    val storeName: String,
-    val status: OrderStatus,
     val pickupCode: String?,
+    val status: OrderStatus,
     val totalPrice: Int,
-    val createdAt: LocalDateTime,
-    val items: List<OrderItemResponse>,
+    val storeName: String,
+    val items: List<OrderItemDetailResponse>,
+    val payment: PaymentInfo,
 ) {
     companion object {
-        fun from(order: Orders) = OrderResponse(
+        fun from(order: Orders, paymentMethod: String? = null) = OrderDetailResponse(
             orderId = order.orderId,
-            storeId = order.store.storeId,
-            storeName = order.store.name,
-            status = order.status,
             pickupCode = order.pickupCode,
+            status = order.status,
             totalPrice = order.totalPrice,
-            createdAt = order.createdAt,
-            items = order.items.map { OrderItemResponse.from(it) },
+            storeName = order.store.name,
+            items = order.items.map { OrderItemDetailResponse.from(it) },
+            payment = PaymentInfo(
+                method = paymentMethod ?: "CASH",
+                status = if (order.status == OrderStatus.CANCELLED) "REFUNDED" else "PENDING",
+            ),
         )
     }
 }
 
+// ── GET /orders/my 목록 아이템 ────────────────────────────────────────────────
+data class OrderListItemResponse(
+    val orderId: Long,
+    val storeName: String,
+    val status: OrderStatus,
+    val totalPrice: Int,
+    val pickupCode: String?,
+    val createdAt: LocalDateTime,
+    val itemCount: Int,
+) {
+    companion object {
+        fun from(order: Orders) = OrderListItemResponse(
+            orderId = order.orderId,
+            storeName = order.store.name,
+            status = order.status,
+            totalPrice = order.totalPrice,
+            pickupCode = order.pickupCode,
+            createdAt = order.createdAt,
+            itemCount = order.items.size,
+        )
+    }
+}
+
+// ── 판매자/기타 내부 용도 ─────────────────────────────────────────────────────
 data class UpdateOrderStatusRequest(
     val status: OrderStatus,
 )
 
-data class AppOrderItemResponse(
-    val menuItemId: Long,
-    val name: String,
-    val emoji: String,
-    val quantity: Int,
-    val price: Int,
-) {
-    companion object {
-        fun from(item: OrderItem) = AppOrderItemResponse(
-            menuItemId = item.product.productId,
-            name = item.product.name,
-            emoji = categoryEmoji(item.product.store.categories.firstOrNull()?.category?.name),
-            quantity = item.quantity,
-            price = item.unitPrice,
-        )
-    }
-}
-
-data class AppOrderResponse(
-    val id: Long,
-    val orderNumber: String,
-    val storeId: Long,
-    val storeName: String,
-    val status: String,
-    val pickupCode: String,
-    val pickupTime: String,
-    val totalAmount: Int,
-    val createdAt: String,
-    val items: List<AppOrderItemResponse>,
-) {
-    companion object {
-        fun from(order: Orders): AppOrderResponse {
-            val pickupTime = order.items.maxOfOrNull { it.product.pickupEnd }?.toString() ?: ""
-            return AppOrderResponse(
-                id = order.orderId,
-                orderNumber = "ORDER-%06d".format(order.orderId),
-                storeId = order.store.storeId,
-                storeName = order.store.name,
-                status = order.status.name,
-                pickupCode = order.pickupCode.orEmpty(),
-                pickupTime = pickupTime,
-                totalAmount = order.totalPrice,
-                createdAt = order.createdAt.toString(),
-                items = order.items.map { AppOrderItemResponse.from(it) },
-            )
-        }
-    }
-}
+data class DailySales(val date: String, val amount: Int)
+data class TopProduct(val productName: String, val soldCount: Int)
+data class TopMenu(val name: String, val count: Int)
 
 data class SalesResponse(
     val totalAmount: Int,
@@ -120,11 +125,6 @@ data class SalesResponse(
     val topProducts: List<TopProduct>,
     val carbonSavedKg: Double = 0.0,
 )
-
-data class DailySales(val date: String, val amount: Int)
-data class TopProduct(val productName: String, val soldCount: Int)
-
-data class TopMenu(val name: String, val emoji: String, val count: Int)
 
 data class SellerSalesResponse(
     val totalAmount: Int,

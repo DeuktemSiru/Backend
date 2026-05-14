@@ -6,11 +6,10 @@ import com.deuktemsiru.security.AuthContext
 import com.deuktemsiru.service.NotificationService
 import org.springframework.web.bind.annotation.*
 
-// ── Response DTOs ─────────────────────────────────────────────────────────────
-
-data class NotificationListResponse(val notifications: List<NotificationResponse>)
-
-// ── Controller ────────────────────────────────────────────────────────────────
+data class NotificationListResponse(
+    val notifications: List<NotificationResponse>,
+    val unreadCount: Int,
+)
 
 @RestController
 @RequestMapping("/api/v1/notifications")
@@ -18,21 +17,28 @@ class NotificationController(
     private val notificationService: NotificationService,
     private val authContext: AuthContext,
 ) {
-
     /**
      * GET /api/v1/notifications
-     * 내 알림 목록 조회 (찜한 가게에서 발송된 알림)
+     * 알림 목록 + 안 읽은 알림 수
      */
     @GetMapping
-    fun getMyNotifications(): ApiResponse<NotificationListResponse> {
+    fun getMyNotifications(
+        @RequestParam(defaultValue = "0") page: Int,
+        @RequestParam(defaultValue = "20") size: Int,
+    ): ApiResponse<NotificationListResponse> {
         val memberId = authContext.getCurrentMemberId()
-        val notifications = notificationService.getNotifications(memberId)
-        return ApiResponse.success(NotificationListResponse(notifications))
+        val result = notificationService.getNotifications(memberId)
+        return ApiResponse.success(
+            NotificationListResponse(
+                notifications = result.notifications,
+                unreadCount = result.unreadCount,
+            )
+        )
     }
 
     /**
      * PATCH /api/v1/notifications/{notificationId}/read
-     * 알림 읽음 처리
+     * 단건 읽음 처리
      */
     @PatchMapping("/{notificationId}/read")
     fun markAsRead(
@@ -41,5 +47,18 @@ class NotificationController(
         val memberId = authContext.getCurrentMemberId()
         notificationService.markAsRead(memberId, notificationId)
         return ApiResponse.success(Unit, "읽음 처리 완료")
+    }
+
+    /**
+     * DELETE /api/v1/notifications/{notificationId}
+     * 알림 삭제
+     */
+    @DeleteMapping("/{notificationId}")
+    fun deleteNotification(
+        @PathVariable notificationId: Long,
+    ): ApiResponse<Unit> {
+        val memberId = authContext.getCurrentMemberId()
+        notificationService.deleteNotification(memberId, notificationId)
+        return ApiResponse.success(Unit, "알림 삭제 완료")
     }
 }

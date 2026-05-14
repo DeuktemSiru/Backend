@@ -1,13 +1,14 @@
 package com.deuktemsiru.service
 
 import com.deuktemsiru.dto.CreateOrderRequest
+import com.deuktemsiru.dto.CreateOrderResponse
 import com.deuktemsiru.dto.DailySales
-import com.deuktemsiru.dto.OrderItemRequest
-import com.deuktemsiru.dto.OrderResponse
+import com.deuktemsiru.dto.OrderDetailResponse
+import com.deuktemsiru.dto.OrderListItemResponse
 import com.deuktemsiru.dto.SalesResponse
 import com.deuktemsiru.dto.SellerSalesResponse
-import com.deuktemsiru.dto.TopProduct
 import com.deuktemsiru.dto.TopMenu
+import com.deuktemsiru.dto.TopProduct
 import com.deuktemsiru.dto.UpdateOrderStatusRequest
 import com.deuktemsiru.dto.categoryEmoji
 import com.deuktemsiru.entity.MemberRole
@@ -37,66 +38,98 @@ class OrderService(
 ) {
 
     @Transactional
-    fun createOrder(consumerId: Long, req: CreateOrderRequest): OrderResponse {
-        return OrderResponse.from(createOrderEntity(consumerId, req))
-    }
-
-    @Transactional
-    fun createOrderEntity(consumerId: Long, req: CreateOrderRequest): Orders {
+    fun createOrder(consumerId: Long, req: CreateOrderRequest): CreateOrderResponse {
         val consumer = memberService.findMember(consumerId)
         require(consumer.role == MemberRole.CONSUMER) { "소비자 계정만 주문할 수 있습니다." }
         require(req.items.isNotEmpty()) { "주문 항목이 없습니다." }
 
-        val store = storeService.findStore(req.storeId)
+        // 첫 번째 상품에서 가게 결정
+        val firstProduct = productRepository.findById(req.items.first().productId)
+            .orElseThrow { NoSuchElementException("상품을 찾을 수 없습니다.") }
+        val store = firstProduct.store
+
         val order = Orders(
             consumer = consumer,
             store = store,
             pickupCode = generatePickupCode(),
         )
 
-        order.items += req.items.map { createOrderItem(order, store, it) }
+        order.items += req.items.map { itemReq ->
+            require(itemReq.quantity > 0) { "주문 수량은 1개 이상이어야 합니다." }
+            val product = productRepository.findByIdForUpdate(itemReq.productId)
+                .orElseThrow { NoSuchElementException("상품을 찾을 수 없습니다.") }
+            require(product.store.storeId == store.storeId) { "같은 가게의 상품만 주문할 수 있습니다." }
+            require(product.status == ProductStatus.AVAILABLE) { "${product.name}은(는) 구매 불가 상태입니다." }
+            require(product.quantityRemaining >= itemReq.quantity) { "${product.name} 재고가 부족합니다." }
+
+            product.quantityRemaining -= itemReq.quantity
+            if (product.quantityRemaining == 0) product.status = ProductStatus.SOLD_OUT
+
+            OrderItem(
+                order = order,
+                product = product,
+                quantity = itemReq.quantity,
+                unitPrice = product.discountPrice,
+            )
+        }
         order.totalPrice = order.items.sumOf { it.unitPrice * it.quantity }
 
-        return orderRepository.save(order)
+        val saved = orderRepository.save(order)
+        return CreateOrderResponse.from(saved, req.paymentMethod)
     }
 
-    fun getMyOrders(consumerId: Long, statusFilter: String? = null): List<OrderResponse> {
-        val orders = getMyOrderEntities(consumerId)
-        val filtered = if (statusFilter != null) {
-            val target = runCatching { OrderStatus.valueOf(statusFilter.uppercase()) }
-                .getOrElse { throw IllegalArgumentException("지원하지 않는 주문 상태입니다: $statusFilter") }
-            orders.filter { it.status == target }
-        } else orders
-        return filtered.map { OrderResponse.from(it) }
-    }
-
-    fun getMyOrderEntities(consumerId: Long): List<Orders> {
+    fun getMyOrders(consumerId: Long, statusFilter: String? = null): List<OrderListItemResponse> {
         val consumer = memberService.findMember(consumerId)
-        return orderRepository.findByConsumerOrderByCreatedAtDesc(consumer)
+        var orders = orderRepository.findByConsumerOrderByCreatedAtDesc(consumer)
+        if (statusFilter != null) {
+            val target = runCatching { OrderStatus.valueOf(statusFilter.uppercase()) }
+                .getOrElse { throw IllegalArgumentException("지원하지 않는 주문 상태: $statusFilter") }
+            orders = orders.filter { it.status == target }
+        }
+        return orders.map { OrderListItemResponse.from(it) }
     }
 
-    fun getOrder(orderId: Long): OrderResponse {
-        return OrderResponse.from(getOrderEntity(orderId))
-    }
-
-    fun getOrderEntity(orderId: Long): Orders {
+    fun getOrder(orderId: Long): OrderDetailResponse {
         val order = orderRepository.findById(orderId)
             .orElseThrow { NoSuchElementException("주문을 찾을 수 없습니다.") }
-        return order
+        return OrderDetailResponse.from(order)
     }
 
-    fun getStoreOrders(sellerId: Long): List<OrderResponse> {
-        return getStoreOrderEntities(sellerId).map { OrderResponse.from(it) }
+    @Transactional
+    fun cancelOrder(consumerId: Long, orderId: Long): OrderDetailResponse {
+        val consumer = memberService.findMember(consumerId)
+        val order = orderRepository.findById(orderId)
+            .orElseThrow { NoSuchElementException("주문을 찾을 수 없습니다.") }
+        require(order.consumer.memberId == consumerId) { "접근 권한이 없습니다." }
+        require(
+            order.status == OrderStatus.PENDING || order.status == OrderStatus.CONFIRMED
+        ) { "픽업 완료되거나 이미 취소된 주문은 취소할 수 없습니다." }
+
+        order.status = OrderStatus.CANCELLED
+        // 재고 복구
+        order.items.forEach { item ->
+            item.product.quantityRemaining += item.quantity
+            if (item.product.status == ProductStatus.SOLD_OUT) {
+                item.product.status = ProductStatus.AVAILABLE
+            }
+        }
+        return OrderDetailResponse.from(order)
     }
 
-    fun getStoreOrder(sellerId: Long, orderId: Long): OrderResponse {
+    // ── 판매자용 ──────────────────────────────────────────────────────────────
+
+    fun getStoreOrders(sellerId: Long): List<OrderDetailResponse> {
+        return getStoreOrderEntities(sellerId).map { OrderDetailResponse.from(it) }
+    }
+
+    fun getStoreOrder(sellerId: Long, orderId: Long): OrderDetailResponse {
         val seller = memberService.findMember(sellerId)
         val store = storeRepository.findByOwner(seller)
             .orElseThrow { NoSuchElementException("등록된 가게가 없습니다.") }
         val order = orderRepository.findById(orderId)
             .orElseThrow { NoSuchElementException("주문을 찾을 수 없습니다.") }
         require(order.store.storeId == store.storeId) { "접근 권한이 없습니다." }
-        return OrderResponse.from(order)
+        return OrderDetailResponse.from(order)
     }
 
     fun getStoreOrderEntities(sellerId: Long): List<Orders> {
@@ -108,12 +141,7 @@ class OrderService(
     }
 
     @Transactional
-    fun updateOrderStatus(sellerId: Long, orderId: Long, req: UpdateOrderStatusRequest): OrderResponse {
-        return OrderResponse.from(updateOrderStatusEntity(sellerId, orderId, req))
-    }
-
-    @Transactional
-    fun updateOrderStatusEntity(sellerId: Long, orderId: Long, req: UpdateOrderStatusRequest): Orders {
+    fun updateOrderStatus(sellerId: Long, orderId: Long, req: UpdateOrderStatusRequest): OrderDetailResponse {
         val seller = memberService.findMember(sellerId)
         require(seller.role == MemberRole.SELLER) { "판매자 계정만 주문 상태를 변경할 수 있습니다." }
         val store = storeRepository.findByOwner(seller)
@@ -125,11 +153,11 @@ class OrderService(
             "주문 상태를 ${order.status}에서 ${req.status}(으)로 변경할 수 없습니다."
         }
         order.status = req.status
-        return order
+        return OrderDetailResponse.from(order)
     }
 
     @Transactional
-    fun verifyPickupCode(sellerId: Long, pickupCode: String): Orders {
+    fun verifyPickupCode(sellerId: Long, pickupCode: String): OrderDetailResponse {
         val seller = memberService.findMember(sellerId)
         require(seller.role == MemberRole.SELLER) { "판매자 계정만 픽업 코드를 검증할 수 있습니다." }
         val store = storeRepository.findByOwner(seller)
@@ -138,7 +166,7 @@ class OrderService(
             ?: throw NoSuchElementException("픽업 코드를 찾을 수 없습니다.")
         require(order.store.storeId == store.storeId) { "접근 권한이 없습니다." }
         if (order.status == OrderStatus.CONFIRMED) order.status = OrderStatus.PICKED_UP
-        return order
+        return OrderDetailResponse.from(order)
     }
 
     fun getSalesStats(sellerId: Long, period: String = "weekly", offset: Int = 0): SalesResponse {
@@ -147,10 +175,8 @@ class OrderService(
             .orElseThrow { NoSuchElementException("등록된 가게가 없습니다.") }
         val allOrders = orderRepository.findByStoreOrderByCreatedAtDesc(store)
             .filter { it.status != OrderStatus.CANCELLED }
-
         val today = LocalDate.now()
         val todayOrders = allOrders.filter { it.createdAt.toLocalDate() == today }
-
         return SalesResponse(
             totalAmount = todayOrders.sumOf { it.totalPrice },
             totalOrders = todayOrders.size,
@@ -170,44 +196,14 @@ class OrderService(
         )
     }
 
-    private fun createOrderItem(
-        order: Orders,
-        store: Store,
-        itemReq: OrderItemRequest,
-    ): OrderItem {
-        require(itemReq.quantity > 0) { "주문 수량은 1개 이상이어야 합니다." }
+    // ── 내부 유틸 ────────────────────────────────────────────────────────────
 
-        val product = productRepository.findByIdForUpdate(itemReq.resolvedProductId())
-            .orElseThrow { NoSuchElementException("상품을 찾을 수 없습니다.") }
-        validateProduct(product, store, itemReq.quantity)
-
-        product.quantityRemaining -= itemReq.quantity
-        if (product.quantityRemaining == 0) product.status = ProductStatus.SOLD_OUT
-
-        return OrderItem(
-            order = order,
-            product = product,
-            quantity = itemReq.quantity,
-            unitPrice = product.discountPrice,
-        )
-    }
-
-    private fun validateProduct(product: Product, store: Store, quantity: Int) {
-        require(product.store.storeId == store.storeId) { "선택한 가게의 상품만 주문할 수 있습니다." }
-        require(product.status == ProductStatus.AVAILABLE) { "${product.name}은(는) 구매 불가 상태입니다." }
-        require(product.quantityRemaining >= quantity) { "${product.name} 재고가 부족합니다." }
-    }
-
-    private fun salesData(
-        period: String,
-        offset: Int,
-        today: LocalDate,
-        orders: List<Orders>,
-    ): List<DailySales> = when (period) {
-        "monthly" -> monthlySales(today.minusMonths(offset.toLong()), orders)
-        "yearly" -> yearlySales(today.year - offset, orders)
-        else -> weeklySales(today.minusDays((offset * 7).toLong()), orders)
-    }
+    private fun salesData(period: String, offset: Int, today: LocalDate, orders: List<Orders>): List<DailySales> =
+        when (period) {
+            "monthly" -> monthlySales(today.minusMonths(offset.toLong()), orders)
+            "yearly" -> yearlySales(today.year - offset, orders)
+            else -> weeklySales(today.minusDays((offset * 7).toLong()), orders)
+        }
 
     private fun monthlySales(targetMonth: LocalDate, orders: List<Orders>): List<DailySales> {
         val firstDay = targetMonth.withDayOfMonth(1)
@@ -237,13 +233,13 @@ class OrderService(
         }
     }
 
-    private fun List<Orders>.sumOn(date: LocalDate): Int =
+    private fun List<Orders>.sumOn(date: LocalDate) =
         sumOf { if (it.createdAt.toLocalDate() == date) it.totalPrice else 0 }
 
-    private fun List<Orders>.sumBetween(start: LocalDate, end: LocalDate): Int =
+    private fun List<Orders>.sumBetween(start: LocalDate, end: LocalDate) =
         sumOf {
-            val date = it.createdAt.toLocalDate()
-            if (!date.isBefore(start) && !date.isAfter(end)) it.totalPrice else 0
+            val d = it.createdAt.toLocalDate()
+            if (!d.isBefore(start) && !d.isAfter(end)) it.totalPrice else 0
         }
 
     private fun topProducts(orders: List<Orders>): List<TopProduct> =
@@ -259,10 +255,8 @@ class OrderService(
             .groupBy { it.product.productId }
             .values
             .map { items ->
-                val product = items.first().product
                 TopMenu(
-                    name = product.name,
-                    emoji = categoryEmoji(product.store.categories.firstOrNull()?.category?.name),
+                    name = items.first().product.name,
                     count = items.sumOf { it.quantity },
                 )
             }
@@ -283,8 +277,7 @@ class OrderService(
         return when (current) {
             OrderStatus.PENDING -> next == OrderStatus.CONFIRMED || next == OrderStatus.CANCELLED
             OrderStatus.CONFIRMED -> next == OrderStatus.PICKED_UP || next == OrderStatus.CANCELLED
-            OrderStatus.PICKED_UP,
-            OrderStatus.CANCELLED -> false
+            OrderStatus.PICKED_UP, OrderStatus.CANCELLED -> false
         }
     }
 }
