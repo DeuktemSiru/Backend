@@ -93,4 +93,7 @@ class SellerMenuController(
         @PathVariable menuItemId: Long,
     ): ResponseEntity<Void> {
         val sellerId = authContext.getCurrentMemberId()
-        sellerAppService.delete
+        sellerAppService.deleteMenu(sellerId, menuItemId)
+        return ResponseEntity.noContent().build()
+    }
+}
