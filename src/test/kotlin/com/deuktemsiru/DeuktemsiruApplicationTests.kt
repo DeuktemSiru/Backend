@@ -43,23 +43,25 @@ class DeuktemsiruApplicationTests {
     }
 
     @Test
-    fun `order creation rejects product from another store`() {
+    fun `order creation rejects mixing products from different stores`() {
         val buyer = memberRepository.findByEmail("buyer@test.com").get()
         val stores = storeRepository.findAll()
-        val store = stores[0]
+        val firstStoreProduct = productRepository.findByStore(stores[0]).first()
         val otherStoreProduct = productRepository.findByStore(stores[1]).first()
 
         val error = assertThrows(IllegalArgumentException::class.java) {
             orderService.createOrder(
                 buyer.memberId,
                 CreateOrderRequest(
-                    storeId = store.storeId,
-                    items = listOf(OrderItemRequest(productId = otherStoreProduct.productId, quantity = 1)),
+                    items = listOf(
+                        OrderItemRequest(productId = firstStoreProduct.productId, quantity = 1),
+                        OrderItemRequest(productId = otherStoreProduct.productId, quantity = 1),
+                    ),
                 ),
             )
         }
 
-        assertEquals("선택한 가게의 상품만 주문할 수 있습니다.", error.message)
+        assertEquals("같은 가게의 상품만 주문할 수 있습니다.", error.message)
     }
 
     @Test
@@ -73,7 +75,6 @@ class DeuktemsiruApplicationTests {
             orderService.createOrder(
                 buyer.memberId,
                 CreateOrderRequest(
-                    storeId = store.storeId,
                     items = listOf(OrderItemRequest(productId = product.productId, quantity = 0)),
                 ),
             )
@@ -83,7 +84,6 @@ class DeuktemsiruApplicationTests {
             orderService.createOrder(
                 buyer.memberId,
                 CreateOrderRequest(
-                    storeId = store.storeId,
                     items = listOf(OrderItemRequest(productId = product.productId, quantity = originalStock + 1)),
                 ),
             )
@@ -103,7 +103,6 @@ class DeuktemsiruApplicationTests {
         val order = orderService.createOrder(
             buyer.memberId,
             CreateOrderRequest(
-                storeId = store.storeId,
                 items = listOf(OrderItemRequest(productId = product.productId, quantity = product.quantityRemaining)),
             ),
         )
@@ -123,7 +122,6 @@ class DeuktemsiruApplicationTests {
         val order = orderService.createOrder(
             buyer.memberId,
             CreateOrderRequest(
-                storeId = store.storeId,
                 items = listOf(OrderItemRequest(productId = product.productId, quantity = 1)),
             ),
         )
@@ -152,9 +150,9 @@ class DeuktemsiruApplicationTests {
         val store = storeRepository.findAll().first()
 
         assertTrue(storeService.toggleWishlist(buyer.memberId, store.storeId))
-        assertTrue(storeService.getWishlist(buyer.memberId).any { it.storeId == store.storeId })
+        assertTrue(storeService.getWishlistBuyer(buyer.memberId).any { it.storeId == store.storeId })
 
         assertFalse(storeService.toggleWishlist(buyer.memberId, store.storeId))
-        assertFalse(storeService.getWishlist(buyer.memberId).any { it.storeId == store.storeId })
+        assertFalse(storeService.getWishlistBuyer(buyer.memberId).any { it.storeId == store.storeId })
     }
 }
