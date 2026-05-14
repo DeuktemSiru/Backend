@@ -11,6 +11,15 @@ data class KakaoLoginRequest(
     val role: MemberRole,
 )
 
+/**
+ * 개발 환경에서 카카오 SDK 없이 디버그 사용자 JWT를 발급받기 위한 요청.
+ * app.security.dev-endpoints-enabled=true 일 때만 동작합니다.
+ */
+data class DebugLoginRequest(
+    /** 로그인 없이 진입할 디버그 사용자 유형 */
+    val role: MemberRole,
+)
+
 data class TokenRefreshRequest(
     val refreshToken: String,
 )

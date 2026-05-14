@@ -1,6 +1,7 @@
 package com.deuktemsiru.config
 
 import com.deuktemsiru.security.JwtAuthenticationFilter
+import org.springframework.beans.factory.annotation.Value
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import org.springframework.security.config.annotation.web.builders.HttpSecurity
@@ -11,7 +12,11 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 
 @Configuration
 @EnableWebSecurity
-class SecurityConfig(private val jwtAuthenticationFilter: JwtAuthenticationFilter) {
+class SecurityConfig(
+    private val jwtAuthenticationFilter: JwtAuthenticationFilter,
+    @Value("\${app.security.dev-endpoints-enabled:true}")
+    private val devEndpointsEnabled: Boolean,
+) {
 
     @Bean
     fun filterChain(http: HttpSecurity): SecurityFilterChain {
@@ -20,18 +25,23 @@ class SecurityConfig(private val jwtAuthenticationFilter: JwtAuthenticationFilte
             .headers { headers -> headers.frameOptions { it.disable() } }
             .sessionManagement { it.sessionCreationPolicy(SessionCreationPolicy.STATELESS) }
             .authorizeHttpRequests { auth ->
-                auth.requestMatchers(
+                val publicMatchers = mutableListOf(
                     // v1 인증 엔드포인트 (카카오 로그인, 토큰 갱신)
                     "/api/v1/auth/kakao/login",
                     "/api/v1/auth/refresh",
-                    // 개발용 콘솔 및 API 문서
-                    "/h2-console/**",
+                    // 개발용 API 문서
                     "/swagger-ui.html",
                     "/swagger-ui/**",
                     "/v3/api-docs/**",
                     // 정적 업로드 파일
                     "/uploads/**",
-                ).permitAll()
+                )
+                // 운영(prod) 프로필에서는 dev-endpoints-enabled=false 로 차단
+                if (devEndpointsEnabled) {
+                    publicMatchers += "/h2-console/**"
+                    publicMatchers += "/api/v1/auth/debug/login"
+                }
+                auth.requestMatchers(*publicMatchers.toTypedArray()).permitAll()
                     .anyRequest().authenticated()
             }
             .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter::class.java)
