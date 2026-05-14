@@ -18,7 +18,7 @@ data class MemberResponse(
     val phone: String?,
     val gender: MemberGender?,
     val birth: LocalDate?,
-    val status: Boolean,
+    val status: Int,          // 1=활성, 0=비활성 (ERD tinyint 기준)
     val createdAt: LocalDateTime,
 ) {
     companion object {
@@ -32,7 +32,7 @@ data class MemberResponse(
             phone = member.phone,
             gender = member.gender,
             birth = member.birth,
-            status = member.status,
+            status = if (member.status) 1 else 0,
             createdAt = member.createdAt,
         )
     }

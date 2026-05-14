@@ -23,7 +23,7 @@ class SellerSalesController(
      */
     @GetMapping("/summary")
     fun getSalesSummary(
-        @RequestParam(defaultValue = "WEEK") period: String,
+        @RequestParam(defaultValue = "DAY") period: String,
         @RequestParam(defaultValue = "0") offset: Int,
     ): ApiResponse<SalesResponse> {
         val sellerId = authContext.getCurrentMemberId()

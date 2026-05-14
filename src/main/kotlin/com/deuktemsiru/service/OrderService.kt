@@ -118,7 +118,14 @@ class OrderService(
 
     // ── 판매자용 ──────────────────────────────────────────────────────────────
 
-    fun getStoreOrders(sellerId: Long): List<OrderDetailResponse> {
+    fun getStoreOrders(
+        sellerId: Long,
+        status: String? = null,
+        date: String? = null,
+        page: Int = 0,
+        size: Int = 20,
+    ): List<OrderDetailResponse> {
+        // TODO: status/date 필터, 페이지네이션 적용 예정
         return getStoreOrderEntities(sellerId).map { OrderDetailResponse.from(it) }
     }
 

@@ -5,6 +5,7 @@ import com.deuktemsiru.dto.OrderDetailResponse
 import com.deuktemsiru.dto.UpdateOrderStatusRequest
 import com.deuktemsiru.security.AuthContext
 import com.deuktemsiru.service.OrderService
+import org.springframework.data.domain.PageRequest
 import org.springframework.web.bind.annotation.*
 
 // ── Request DTOs ──────────────────────────────────────────────────────────────
@@ -25,9 +26,14 @@ class SellerOrderController(
      * 내 가게 주문 목록 조회
      */
     @GetMapping
-    fun getStoreOrders(): ApiResponse<List<OrderDetailResponse>> {
+    fun getStoreOrders(
+        @RequestParam(required = false) status: String?,
+        @RequestParam(required = false) date: String?,
+        @RequestParam(defaultValue = "0") page: Int,
+        @RequestParam(defaultValue = "20") size: Int,
+    ): ApiResponse<List<OrderDetailResponse>> {
         val sellerId = authContext.getCurrentMemberId()
-        val orders = orderService.getStoreOrders(sellerId)
+        val orders = orderService.getStoreOrders(sellerId, status, date, page, size)
         return ApiResponse.success(orders)
     }
 
