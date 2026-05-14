@@ -98,12 +98,14 @@ Gradle이 다른 JDK를 자동 감지해 문제가 생기면 Java 경로를 명�
 
 | 역할 | 이메일 | 이름/닉네임 | 비고 |
 | --- | --- | --- | --- |
-| 구매자 | `buyer@test.com` | 홍길동 / 득템러 | 카카오 샘플 사용자 |
-| 판매자 | `bakery@test.com` | 영희 / 영희네베이커리 | 영희네 베이커리 |
-| 판매자 | `cafe@test.com` | 민준 / 커피향기 | 커피향기 |
-| 판매자 | `resto@test.com` | 수진 / 맛있는식당 | 맛있는식당 |
+| 구매자 | `buyer@test.com` | 홍길동 / 시흥득템러 | 카카오 샘플 사용자 |
+| 판매자 | `bakery@test.com` | 김영희 / 오이도굽는집 | 오이도 굽는집, BAKERY |
+| 판매자 | `cafe@siheung.test` | 박민준 / 배곧로스터리 | 배곧 로스터리, CAFE |
+| 판매자 | `bunsik@siheung.test` | 이수진 / 정왕시장분식 | 정왕시장 분식, RESTAURANT |
+| 판매자 | `dosirak@siheung.test` | 최하늘 / 은행동찬찬도시락 | 은행동 찬찬도시락, RESTAURANT |
+| 판매자 | `mart@siheung.test` | 정다은 / 목감우리반찬 | 목감 우리반찬, GROCERY |
 
-각 판매자 매장에는 샘플 메뉴 1개와 오늘 판매 가능한 마감할인 상품 1개가 함께 생성됩니다.
+각 판매자 매장에는 시흥시 생활권 주소, 좌표, 전화번호, 평점, 리뷰 수와 함께 메뉴 1개와 오늘 판매 가능한 마감할인 상품 1개가 생성됩니다. 샘플 매장은 오이도, 배곧, 정왕시장, 은행동, 목감 권역을 기준으로 구성했습니다.
 
 ## 프로젝트 구조
 
@@ -195,7 +197,7 @@ READY -> CANCELLED
 ### 매장 카테고리
 
 ```text
-BAKERY / CAFE / RESTAURANT
+BAKERY / CAFE / RESTAURANT / GROCERY / OTHER
 ```
 
 ### 주문 생성 요청 예시
