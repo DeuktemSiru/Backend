@@ -9,6 +9,7 @@ import com.deuktemsiru.service.SellerAppService
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.*
+import java.time.LocalDate
 
 // ── Controller ────────────────────────────────────────────────────────────────
 
@@ -24,9 +25,13 @@ class SellerProductController(
      * 오늘의 판매 상품(Product) 목록 조회
      */
     @GetMapping
-    fun getProducts(): ApiResponse<List<SellerSaleItemResponse>> {
+    fun getProducts(
+        @RequestParam(required = false) date: String?,
+        @RequestParam(required = false) status: String?,
+    ): ApiResponse<List<SellerSaleItemResponse>> {
         val sellerId = authContext.getCurrentMemberId()
-        return ApiResponse.success(sellerAppService.getProducts(sellerId))
+        val parsedDate = date?.let { LocalDate.parse(it) }
+        return ApiResponse.success(sellerAppService.getProducts(sellerId, parsedDate, status))
     }
 
     /**
