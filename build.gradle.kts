@@ -29,7 +29,7 @@ dependencies {
 	implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:3.0.3")
 	implementation("tools.jackson.module:jackson-module-kotlin")
 	runtimeOnly("com.h2database:h2")
-	runtimeOnly("com.mysql:mysql-connector-j")
+	runtimeOnly("org.postgresql:postgresql")
 	testImplementation("org.springframework.boot:spring-boot-starter-data-jpa-test")
 	testImplementation("org.springframework.boot:spring-boot-starter-security-test")
 	testImplementation("org.springframework.boot:spring-boot-starter-webmvc-test")

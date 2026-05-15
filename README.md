@@ -36,7 +36,7 @@
 | 언어 | Kotlin 2.2.21 |
 | 런타임 | Java 21 |
 | 프레임워크 | Spring Boot 4.0.6 |
-| 데이터 | Spring Data JPA, Hibernate, H2, MySQL Connector |
+| 데이터 | Spring Data JPA, Hibernate, H2, PostgreSQL Connector |
 | 보안 | Spring Security, JWT |
 | API 문서 | springdoc-openapi 3.0.3 |
 | 테스트 | JUnit 5, Spring Boot Test |
@@ -91,6 +91,16 @@ Gradle이 다른 JDK를 자동 감지해 문제가 생기면 Java 경로를 명�
 | `app.security.dev-endpoints-enabled` | `true` | 개발용 H2 콘솔 공개 여부. 운영 profile에서는 `false`입니다. |
 
 운영 실행 시에는 `prod` profile을 사용하고 `SPRING_DATASOURCE_URL`, `SPRING_DATASOURCE_USERNAME`, `SPRING_DATASOURCE_PASSWORD`, `APP_JWT_SECRET`을 환경변수로 설정합니다. `prod` profile은 H2 콘솔을 비활성화하고 JPA DDL 자동 생성을 `validate`로 둡니다.
+
+AWS RDS PostgreSQL 예시:
+
+```bash
+export SPRING_DATASOURCE_URL="jdbc:postgresql://RDS_ENDPOINT:5432/deuktemsiru"
+export SPRING_DATASOURCE_USERNAME="postgres"
+export SPRING_DATASOURCE_PASSWORD="your-rds-password"
+export APP_JWT_SECRET="replace-with-a-long-random-secret"
+java -jar build/libs/deuktemsiru_backend-0.0.1-SNAPSHOT.jar --spring.profiles.active=prod
+```
 
 ## 샘플 데이터
 
