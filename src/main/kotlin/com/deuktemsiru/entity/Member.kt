@@ -49,6 +49,17 @@ class Member(
 
     var deletedAt: LocalDateTime? = null,
 
+    // 알림 설정 — 소비자
+    @Column(nullable = false) var notifNewProduct: Boolean = true,
+    @Column(nullable = false) var notifPickupReminder: Boolean = true,
+    @Column(nullable = false) var notifOrderConfirmed: Boolean = true,
+    // 알림 설정 — 판매자
+    @Column(nullable = false) var notifNewOrder: Boolean = true,
+    @Column(nullable = false) var notifPickupComplete: Boolean = true,
+    @Column(nullable = false) var notifSoldOut: Boolean = true,
+    // 알림 설정 — 공통
+    @Column(nullable = false) var notifEvent: Boolean = false,
+
     @CreationTimestamp
     @Column(nullable = false, updatable = false)
     val createdAt: LocalDateTime = LocalDateTime.now(),

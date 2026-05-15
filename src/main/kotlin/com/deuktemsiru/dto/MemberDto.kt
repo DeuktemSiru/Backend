@@ -7,6 +7,55 @@ import com.deuktemsiru.entity.MemberStats
 import java.time.LocalDate
 import java.time.LocalDateTime
 
+// ── GET /members/me/notification-settings ─────────────────────────────────────
+data class NotificationSettingsResponse(
+    // 소비자 전용
+    val newProduct: Boolean?,
+    val pickupReminder: Boolean?,
+    val orderConfirmed: Boolean?,
+    // 판매자 전용
+    val newOrder: Boolean?,
+    val pickupComplete: Boolean?,
+    val soldOut: Boolean?,
+    // 공통
+    val event: Boolean,
+) {
+    companion object {
+        fun from(member: Member) = if (member.role == MemberRole.CONSUMER) {
+            NotificationSettingsResponse(
+                newProduct = member.notifNewProduct,
+                pickupReminder = member.notifPickupReminder,
+                orderConfirmed = member.notifOrderConfirmed,
+                newOrder = null,
+                pickupComplete = null,
+                soldOut = null,
+                event = member.notifEvent,
+            )
+        } else {
+            NotificationSettingsResponse(
+                newProduct = null,
+                pickupReminder = null,
+                orderConfirmed = null,
+                newOrder = member.notifNewOrder,
+                pickupComplete = member.notifPickupComplete,
+                soldOut = member.notifSoldOut,
+                event = member.notifEvent,
+            )
+        }
+    }
+}
+
+// ── PUT /members/me/notification-settings ─────────────────────────────────────
+data class UpdateNotificationSettingsRequest(
+    val newProduct: Boolean? = null,
+    val pickupReminder: Boolean? = null,
+    val orderConfirmed: Boolean? = null,
+    val newOrder: Boolean? = null,
+    val pickupComplete: Boolean? = null,
+    val soldOut: Boolean? = null,
+    val event: Boolean? = null,
+)
+
 // ── GET /members/me ───────────────────────────────────────────────────────────
 data class MemberResponse(
     val memberId: Long,
