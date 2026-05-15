@@ -3,9 +3,11 @@ package com.deuktemsiru.dto
 import com.deuktemsiru.entity.Member
 import com.deuktemsiru.entity.MemberGender
 import com.deuktemsiru.entity.MemberRole
+import com.deuktemsiru.entity.MemberStats
 import java.time.LocalDate
 import java.time.LocalDateTime
 
+// ── GET /members/me ───────────────────────────────────────────────────────────
 data class MemberResponse(
     val memberId: Long,
     val email: String,
@@ -16,7 +18,7 @@ data class MemberResponse(
     val phone: String?,
     val gender: MemberGender?,
     val birth: LocalDate?,
-    val status: Boolean,
+    val status: Int,          // 1=활성, 0=비활성 (ERD tinyint 기준)
     val createdAt: LocalDateTime,
 ) {
     companion object {
@@ -30,32 +32,29 @@ data class MemberResponse(
             phone = member.phone,
             gender = member.gender,
             birth = member.birth,
-            status = member.status,
+            status = if (member.status) 1 else 0,
             createdAt = member.createdAt,
         )
     }
 }
 
-data class UserApiResponse(
-    val id: Long,
-    val nickname: String,
-    val role: String,
-    val grade: String,
-    val totalSavings: Int,
-    val points: Int,
-    val couponCount: Int,
-    val co2Saved: Float,
+// ── GET /members/me/stats ─────────────────────────────────────────────────────
+data class MemberStatsResponse(
+    val totalSavedAmount: Int,
+    val totalCarbonSavedKg: Double,
+    val totalOrders: Int,
 ) {
     companion object {
-        fun from(member: Member) = UserApiResponse(
-            id = member.memberId,
-            nickname = member.nickname,
-            role = member.role.name,
-            grade = "WELCOME",
-            totalSavings = 0,
-            points = 0,
-            couponCount = 0,
-            co2Saved = 0f,
+        fun from(stats: MemberStats) = MemberStatsResponse(
+            totalSavedAmount = stats.totalSavedAmount,
+            totalCarbonSavedKg = stats.totalCarbonSavedKg,
+            totalOrders = stats.totalOrders,
+        )
+
+        fun empty() = MemberStatsResponse(
+            totalSavedAmount = 0,
+            totalCarbonSavedKg = 0.0,
+            totalOrders = 0,
         )
     }
 }

@@ -28,6 +28,12 @@ application-prod.yml
 .DS_Store
 Thumbs.db
 
+# Local SDK path (machine-specific)
+local.properties
+
+# Claude Code project config
+.claude/
+
 # Logs
 *.log
 logs/

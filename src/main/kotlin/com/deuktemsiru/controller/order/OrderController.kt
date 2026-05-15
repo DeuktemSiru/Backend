@@ -2,18 +2,14 @@ package com.deuktemsiru.controller.order
 
 import com.deuktemsiru.common.ApiResponse
 import com.deuktemsiru.dto.CreateOrderRequest
-import com.deuktemsiru.dto.OrderResponse
+import com.deuktemsiru.dto.CreateOrderResponse
+import com.deuktemsiru.dto.OrderDetailResponse
+import com.deuktemsiru.dto.OrderListItemResponse
 import com.deuktemsiru.security.AuthContext
 import com.deuktemsiru.service.OrderService
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.*
-
-// ── Request DTOs ──────────────────────────────────────────────────────────────
-
-data class OrderCancelRequest(val reason: String?)
-
-// ── Controller ────────────────────────────────────────────────────────────────
 
 @RestController
 @RequestMapping("/api/v1/orders")
@@ -21,33 +17,32 @@ class OrderController(
     private val orderService: OrderService,
     private val authContext: AuthContext,
 ) {
-
     /**
      * POST /api/v1/orders
-     * 주문 생성
+     * 주문 생성 — items[].productId 기반으로 가게를 자동 결정
      */
     @PostMapping
     fun createOrder(
         @RequestBody req: CreateOrderRequest,
-    ): ResponseEntity<ApiResponse<OrderResponse>> {
+    ): ResponseEntity<ApiResponse<CreateOrderResponse>> {
         val memberId = authContext.getCurrentMemberId()
         val order = orderService.createOrder(memberId, req)
         return ResponseEntity.status(HttpStatus.CREATED)
-            .body(ApiResponse.created(order, "주문이 생성되었습니다."))
+            .body(ApiResponse.created(order, "주문 성공"))
     }
 
     /**
      * GET /api/v1/orders/my
-     * 내 주문 목록 조회 (진행중·픽업완료 탭)
-     * @param status PENDING|CONFIRMED|PICKED_UP|CANCELLED (optional)
+     * 내 주문 목록 (status 필터 선택)
      */
     @GetMapping("/my")
     fun getMyOrders(
         @RequestParam(required = false) status: String?,
-    ): ApiResponse<List<OrderResponse>> {
+        @RequestParam(defaultValue = "0") page: Int,
+        @RequestParam(defaultValue = "20") size: Int,
+    ): ApiResponse<List<OrderListItemResponse>> {
         val memberId = authContext.getCurrentMemberId()
-        val orders = orderService.getMyOrders(memberId, status)
-        return ApiResponse.success(orders)
+        return ApiResponse.success(orderService.getMyOrders(memberId, status))
     }
 
     /**
@@ -57,21 +52,19 @@ class OrderController(
     @GetMapping("/{orderId}")
     fun getOrder(
         @PathVariable orderId: Long,
-    ): ApiResponse<OrderResponse> {
-        val order = orderService.getOrder(orderId)
-        return ApiResponse.success(order)
+    ): ApiResponse<OrderDetailResponse> {
+        return ApiResponse.success(orderService.getOrder(orderId))
     }
 
     /**
      * PATCH /api/v1/orders/{orderId}/cancel
-     * 주문 취소 (픽업 전)
-     * TODO: 취소 정책 및 환불 로직 구현 필요
+     * 주문 취소 (픽업 전 — PENDING/CONFIRMED 상태만 가능)
      */
     @PatchMapping("/{orderId}/cancel")
     fun cancelOrder(
         @PathVariable orderId: Long,
-        @RequestBody(required = false) req: OrderCancelRequest?,
-    ): ApiResponse<OrderResponse> {
-        throw UnsupportedOperationException("주문 취소: 미구현 — 취소 정책 및 환불 로직 구현 필요")
+    ): ApiResponse<OrderDetailResponse> {
+        val memberId = authContext.getCurrentMemberId()
+        return ApiResponse.success(orderService.cancelOrder(memberId, orderId), "주문이 취소되었습니다.")
     }
 }
