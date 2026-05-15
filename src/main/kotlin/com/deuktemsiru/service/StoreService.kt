@@ -22,6 +22,11 @@ import com.deuktemsiru.repository.WishlistRepository
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.LocalDate
+import kotlin.math.atan2
+import kotlin.math.cos
+import kotlin.math.roundToInt
+import kotlin.math.sin
+import kotlin.math.sqrt
 
 @Service
 @Transactional(readOnly = true)
@@ -33,6 +38,7 @@ class StoreService(
     private val storeCategoryRepository: StoreCategoryRepository,
     private val memberService: MemberService,
 ) {
+    data class PageSlice<T>(val items: List<T>, val hasNext: Boolean)
 
     // ── 기존 판매자용 ──────────────────────────────────────────────────────────
 
@@ -107,7 +113,13 @@ class StoreService(
         category: String?,
         keyword: String?,
         memberId: Long?,
-    ): List<StoreListItemResponse> {
+        latitude: Double? = null,
+        longitude: Double? = null,
+        radius: Int? = null,
+        sort: String = "distance",
+        page: Int = 0,
+        size: Int = 20,
+    ): PageSlice<StoreListItemResponse> {
         val categoryType = category?.let { runCatching { CategoryType.valueOf(it) }.getOrNull() }
         val allStores = if (categoryType != null)
             storeRepository.findByCategory(categoryType)
@@ -120,10 +132,19 @@ class StoreService(
         else
             allStores
 
-        return filtered.map { store ->
-            val count = productRepository.findByStoreAndAvailableDateAndStatus(store, today, ProductStatus.AVAILABLE).size
-            StoreListItemResponse.from(store, availableProductCount = count)
+        val withDistance = filtered.map { store -> store to distanceMeters(latitude, longitude, store.latitude, store.longitude) }
+            .filter { (_, distance) -> radius == null || distance <= radius }
+        val sorted = when (sort.lowercase()) {
+            "rating" -> withDistance.sortedWith(compareByDescending<Pair<Store, Int>> { it.first.ratingAvg }.thenBy { it.second })
+            "products", "available" -> withDistance.sortedByDescending {
+                productRepository.findByStoreAndAvailableDateAndStatus(it.first, today, ProductStatus.AVAILABLE).size
+            }
+            else -> withDistance.sortedBy { it.second }
         }
+        return sorted.map { (store, distance) ->
+            val count = productRepository.findByStoreAndAvailableDateAndStatus(store, today, ProductStatus.AVAILABLE).size
+            StoreListItemResponse.from(store, availableProductCount = count, distanceM = distance)
+        }.pageSlice(page, size)
     }
 
     // ── 구매자 앱 가게 상세 (GET /stores/{storeId}) ───────────────────────────
@@ -152,17 +173,33 @@ class StoreService(
 
     // ── 상품 목록 (GET /products) ─────────────────────────────────────────────
 
-    fun getProductsBuyer(category: String?): List<ProductListItemResponse> {
+    fun getProductsBuyer(
+        category: String?,
+        latitude: Double? = null,
+        longitude: Double? = null,
+        radius: Int? = null,
+        sort: String = "distance",
+        page: Int = 0,
+        size: Int = 20,
+    ): PageSlice<ProductListItemResponse> {
         val categoryType = category?.let { runCatching { CategoryType.valueOf(it) }.getOrNull() }
         val stores = if (categoryType != null)
             storeRepository.findByCategory(categoryType)
         else
             storeRepository.findAll()
         val today = LocalDate.now()
-        return stores.flatMap { store ->
+        val products = stores.flatMap { store ->
+            val distance = distanceMeters(latitude, longitude, store.latitude, store.longitude)
+            if (radius != null && distance > radius) return@flatMap emptyList()
             productRepository.findByStoreAndAvailableDateAndStatus(store, today, ProductStatus.AVAILABLE)
-                .map { ProductListItemResponse.from(it) }
+                .map { ProductListItemResponse.from(it, distanceM = distance) }
         }
+        val sorted = when (sort.lowercase()) {
+            "discount" -> products.sortedBy { it.discountPrice }
+            "quantity" -> products.sortedByDescending { it.quantityRemaining }
+            else -> products.sortedBy { it.distanceM }
+        }
+        return sorted.pageSlice(page, size)
     }
 
     // ── 상품 상세 (GET /products/{productId}) ────────────────────────────────
@@ -215,5 +252,31 @@ class StoreService(
             storeCategoryRepository.save(StoreCategory(store = store, category = categoryType))
         }
         return store
+    }
+
+    private fun distanceMeters(
+        fromLatitude: Double?,
+        fromLongitude: Double?,
+        toLatitude: Double,
+        toLongitude: Double,
+    ): Int {
+        if (fromLatitude == null || fromLongitude == null) return 0
+        val earthRadiusMeters = 6_371_000.0
+        val dLat = Math.toRadians(toLatitude - fromLatitude)
+        val dLon = Math.toRadians(toLongitude - fromLongitude)
+        val lat1 = Math.toRadians(fromLatitude)
+        val lat2 = Math.toRadians(toLatitude)
+        val a = sin(dLat / 2) * sin(dLat / 2) +
+            cos(lat1) * cos(lat2) * sin(dLon / 2) * sin(dLon / 2)
+        val c = 2 * atan2(sqrt(a), sqrt(1 - a))
+        return (earthRadiusMeters * c).roundToInt()
+    }
+
+    private fun <T> List<T>.pageSlice(page: Int, size: Int): PageSlice<T> {
+        val safeSize = size.coerceAtLeast(1)
+        val fromIndex = page.coerceAtLeast(0) * safeSize
+        if (fromIndex >= this.size) return PageSlice(emptyList(), false)
+        val toIndex = minOf(fromIndex + safeSize, this.size)
+        return PageSlice(subList(fromIndex, toIndex), toIndex < this.size)
     }
 }

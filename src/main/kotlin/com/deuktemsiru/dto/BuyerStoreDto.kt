@@ -8,7 +8,7 @@ data class StoreListItemResponse(
     val storeId: Long,
     val name: String,
     val thumbnailUrl: String?,
-    val distanceM: Int,          // 위치 기반 미구현 시 0
+    val distanceM: Int,
     val category: String,
     val ratingAvg: Double,
     val reviewCount: Int,
@@ -95,7 +95,7 @@ data class ProductListItemResponse(
     val pickupEnd: String,
     val status: String,
     val storeName: String,
-    val distanceM: Int,          // 위치 기반 미구현 시 0
+    val distanceM: Int,
 ) {
     companion object {
         fun from(product: Product, distanceM: Int = 0) = ProductListItemResponse(

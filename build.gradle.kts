@@ -4,6 +4,7 @@ plugins {
 	id("org.springframework.boot") version "4.0.6"
 	id("io.spring.dependency-management") version "1.1.7"
 	kotlin("plugin.jpa") version "2.2.21"
+	jacoco
 }
 
 group = "com.deuktemsiru"
@@ -39,6 +40,7 @@ dependencies {
 kotlin {
 	compilerOptions {
 		freeCompilerArgs.addAll("-Xjsr305=strict", "-Xannotation-default-target=param-property")
+		allWarningsAsErrors = true
 	}
 }
 
@@ -50,4 +52,56 @@ allOpen {
 
 tasks.withType<Test> {
 	useJUnitPlatform()
+	testLogging {
+		events("failed", "skipped")
+		exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
+	}
+	finalizedBy(tasks.jacocoTestReport)
+}
+
+tasks.jacocoTestReport {
+	dependsOn(tasks.test)
+	reports {
+		xml.required = true
+		html.required = true
+	}
+}
+
+val verifyNoBackendStubs by tasks.registering {
+	group = "verification"
+	description = "Fails the build when unfinished backend stubs are committed."
+
+	val sourceTree = fileTree("src/main/kotlin") {
+		include("**/*.kt")
+		exclude("**/dto/BuyerStoreDto.kt")
+	}
+	val forbidden = listOf(
+		"UnsupportedOperationException",
+		"NotImplementedError",
+		"TODO(",
+		"TODO:",
+		"미구현",
+	)
+
+	inputs.files(sourceTree)
+
+	doLast {
+		val violations = sourceTree.files.flatMap { file ->
+			file.readLines().mapIndexedNotNull { index, line ->
+				val token = forbidden.firstOrNull { it in line }
+				if (token == null) null else "${file.relativeTo(projectDir)}:${index + 1}: $token"
+			}
+		}
+
+		if (violations.isNotEmpty()) {
+			throw GradleException(
+				"Unfinished backend stubs found:\n" + violations.joinToString("\n"),
+			)
+		}
+	}
+}
+
+tasks.check {
+	dependsOn(verifyNoBackendStubs)
+	dependsOn(tasks.jacocoTestReport)
 }

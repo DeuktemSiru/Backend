@@ -27,8 +27,16 @@ class ProductController(
         @RequestParam(defaultValue = "0") page: Int,
         @RequestParam(defaultValue = "20") size: Int,
     ): ApiResponse<ProductListResponse> {
-        val products = storeService.getProductsBuyer(category)
-        return ApiResponse.success(ProductListResponse(products = products, hasNext = false))
+        val products = storeService.getProductsBuyer(
+            category = category,
+            latitude = latitude,
+            longitude = longitude,
+            radius = radius,
+            sort = sort,
+            page = page,
+            size = size,
+        )
+        return ApiResponse.success(ProductListResponse(products = products.items, hasNext = products.hasNext))
     }
 
     /**
