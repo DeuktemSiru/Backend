@@ -1,7 +1,6 @@
 package com.deuktemsiru.entity
 
 import jakarta.persistence.*
-import io.swagger.v3.oas.annotations.media.Schema
 import java.time.LocalDateTime
 
 @Entity
@@ -31,8 +30,5 @@ class Payment(
     var paidAt: LocalDateTime? = null,
 )
 
-@Schema(description = "결제 수단", allowableValues = ["SIRU", "CARD", "CASH"])
 enum class PaymentMethod { SIRU, CARD, CASH }
-
-@Schema(description = "결제 상태", allowableValues = ["PENDING", "COMPLETED", "FAILED", "REFUNDED"])
 enum class PaymentStatus { PENDING, COMPLETED, FAILED, REFUNDED }

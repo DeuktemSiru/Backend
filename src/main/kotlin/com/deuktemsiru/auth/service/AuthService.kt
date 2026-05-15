@@ -71,6 +71,7 @@ class AuthService(
 
     /**
      * 로컬 개발용 로그인. 실제 카카오 토큰 검증 없이 샘플 사용자에게 JWT를 발급합니다.
+     * 운영 환경에서는 SecurityConfig + dev-endpoints-enabled 플래그로 차단되어야 합니다.
      */
     @Transactional
     fun debugLogin(role: MemberRole): LoginResponse {

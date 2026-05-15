@@ -13,15 +13,18 @@ import io.swagger.v3.oas.annotations.tags.Tag
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
-import org.springframework.web.bind.annotation.PostMapping
-import org.springframework.web.bind.annotation.RequestBody
-import org.springframework.web.bind.annotation.RequestMapping
-import org.springframework.web.bind.annotation.RestController
+import org.springframework.web.bind.annotation.*
 import org.springframework.web.server.ResponseStatusException
 import io.swagger.v3.oas.annotations.responses.ApiResponse as SwaggerApiResponse
 import io.swagger.v3.oas.annotations.responses.ApiResponses as SwaggerApiResponses
 
-@Tag(name = "Auth", description = "카카오 로그인, 개발용 로그인, 토큰 갱신, 로그아웃 API")
+// ── Request DTOs ──────────────────────────────────────────────────────────────
+
+data class SiruLinkRequest(val siruAccessToken: String)
+
+// ── Controller ────────────────────────────────────────────────────────────────
+
+@Tag(name = "Auth", description = "카카오 로그인, 개발용 로그인, 토큰 갱신, 로그아웃, 시루 연동 API")
 @RestController
 @RequestMapping("/api/v1/auth")
 class AuthController(
@@ -62,6 +65,7 @@ class AuthController(
     /**
      * POST /api/v1/auth/debug/login
      * 로컬 개발 전용 로그인. 카카오 SDK 없이 샘플 사용자 JWT를 발급합니다.
+     * app.security.dev-endpoints-enabled=true 일 때만 동작합니다.
      */
     @Operation(summary = "개발용 로그인", description = "로컬 개발 환경에서 카카오 SDK 없이 지정한 역할의 샘플 사용자 JWT를 발급합니다.")
     @SwaggerApiResponses(
@@ -122,5 +126,41 @@ class AuthController(
         val memberId = authContext.getCurrentMemberId()
         authService.logout(memberId)
         return ApiResponse.success(Unit, "로그아웃 성공")
+    }
+
+    /**
+     * POST /api/v1/auth/siru/link
+     * 시루 계정 연동
+     * TODO: 시루 API 확정 후 구현 필요 (TBD)
+     */
+    @Operation(summary = "시루 연동", description = "시루 액세스 토큰으로 계정을 연동합니다. (TBD)")
+    @SwaggerApiResponses(
+        value = [
+            SwaggerApiResponse(responseCode = "200", description = "시루 연동 성공 (미구현)"),
+            SwaggerApiResponse(responseCode = "501", description = "미구현 — 시루 API 확정 후 구현 필요"),
+        ],
+    )
+    @PostMapping("/siru/link")
+    fun linkSiru(
+        @RequestBody req: SiruLinkRequest,
+    ): ApiResponse<Unit> {
+        throw UnsupportedOperationException("시루 연동: 미구현 — 시루 API 확정 후 구현 필요 (TBD)")
+    }
+
+    /**
+     * DELETE /api/v1/auth/siru/link
+     * 시루 계정 연동 해제
+     * TODO: 시루 API 확정 후 구현 필요 (TBD)
+     */
+    @Operation(summary = "시루 연동 해제", description = "시루 계정 연동을 해제합니다. (TBD)")
+    @SwaggerApiResponses(
+        value = [
+            SwaggerApiResponse(responseCode = "200", description = "시루 연동 해제 성공 (미구현)"),
+            SwaggerApiResponse(responseCode = "501", description = "미구현 — 시루 API 확정 후 구현 필요"),
+        ],
+    )
+    @DeleteMapping("/siru/link")
+    fun unlinkSiru(): ApiResponse<Unit> {
+        throw UnsupportedOperationException("시루 연동 해제: 미구현 — 시루 API 확정 후 구현 필요 (TBD)")
     }
 }

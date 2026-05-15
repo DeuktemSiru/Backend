@@ -1,7 +1,6 @@
 package com.deuktemsiru.entity
 
 import jakarta.persistence.*
-import io.swagger.v3.oas.annotations.media.Schema
 import org.hibernate.annotations.CreationTimestamp
 import org.hibernate.annotations.UpdateTimestamp
 import java.time.LocalDate
@@ -77,5 +76,4 @@ class Product(
     val images: MutableList<ProductImage> = mutableListOf(),
 )
 
-@Schema(description = "상품 판매 상태", allowableValues = ["AVAILABLE", "SOLD_OUT", "EXPIRED", "CANCELLED"])
-enum class ProductStatus { AVAILABLE, SOLD_OUT, EXPIRED, CANCELLED }
+enum class ProductStatus { AVAILABLE, SOLD_OUT, EXPIRED }

@@ -29,13 +29,14 @@ class SecurityConfig(
                     // v1 인증 엔드포인트 (카카오 로그인, 토큰 갱신)
                     "/api/v1/auth/kakao/login",
                     "/api/v1/auth/refresh",
-                    // API 문서
+                    // 개발용 API 문서
                     "/swagger-ui.html",
                     "/swagger-ui/**",
                     "/v3/api-docs/**",
                     // 정적 업로드 파일
                     "/uploads/**",
                 )
+                // 운영(prod) 프로필에서는 dev-endpoints-enabled=false 로 차단
                 if (devEndpointsEnabled) {
                     publicMatchers += "/h2-console/**"
                     publicMatchers += "/api/v1/auth/debug/login"

@@ -1,13 +1,22 @@
 package com.deuktemsiru.service
 
-import com.deuktemsiru.dto.BuyerStoreResponse
+import com.deuktemsiru.dto.CreateStoreRequest
+import com.deuktemsiru.dto.ProductDetailResponse
+import com.deuktemsiru.dto.ProductListItemResponse
+import com.deuktemsiru.dto.StoreDetailResponse
+import com.deuktemsiru.dto.StoreListItemResponse
+import com.deuktemsiru.dto.StoreMarkerResponse
 import com.deuktemsiru.dto.StoreResponse
 import com.deuktemsiru.dto.UpdateStoreRequest
+import com.deuktemsiru.dto.WishlistItemResponse
 import com.deuktemsiru.entity.CategoryType
 import com.deuktemsiru.entity.ProductStatus
+import com.deuktemsiru.entity.Store
+import com.deuktemsiru.entity.StoreCategory
 import com.deuktemsiru.entity.Wishlist
 import com.deuktemsiru.repository.MenuItemRepository
 import com.deuktemsiru.repository.ProductRepository
+import com.deuktemsiru.repository.StoreCategoryRepository
 import com.deuktemsiru.repository.StoreRepository
 import com.deuktemsiru.repository.WishlistRepository
 import org.springframework.stereotype.Service
@@ -21,16 +30,14 @@ class StoreService(
     private val menuItemRepository: MenuItemRepository,
     private val wishlistRepository: WishlistRepository,
     private val productRepository: ProductRepository,
+    private val storeCategoryRepository: StoreCategoryRepository,
     private val memberService: MemberService,
 ) {
 
-    fun getStores(userId: Long?): List<StoreResponse> {
-        val stores = storeRepository.findAll()
-        val wishlistedIds = userId?.let {
-            val member = memberService.findMember(it)
-            wishlistRepository.findByMember(member).map { w -> w.store.storeId }.toSet()
-        } ?: emptySet()
-        return stores.map { StoreResponse.from(it, it.storeId in wishlistedIds) }
+    // ── 기존 판매자용 ──────────────────────────────────────────────────────────
+
+    fun getStores(userId: Long?): List<Store> {
+        return storeRepository.findAll()
     }
 
     fun getStore(storeId: Long, userId: Long?): StoreResponse {
@@ -73,44 +80,140 @@ class StoreService(
         }
     }
 
-    fun getWishlist(userId: Long): List<StoreResponse> {
+    @Transactional
+    fun addWishlist(userId: Long, storeId: Long) {
         val member = memberService.findMember(userId)
-        return wishlistRepository.findByMember(member).map { StoreResponse.from(it.store, isWishlisted = true) }
+        val store = findStore(storeId)
+        val existing = wishlistRepository.findByMemberAndStore(member, store)
+        if (existing.isPresent) throw IllegalStateException("이미 찜한 가게입니다.")
+        wishlistRepository.save(Wishlist(member = member, store = store))
+    }
+
+    @Transactional
+    fun removeWishlist(userId: Long, storeId: Long) {
+        val member = memberService.findMember(userId)
+        val store = findStore(storeId)
+        val existing = wishlistRepository.findByMemberAndStore(member, store)
+            .orElseThrow { NoSuchElementException("찜한 가게가 아닙니다.") }
+        wishlistRepository.delete(existing)
     }
 
     fun findStore(storeId: Long) =
         storeRepository.findById(storeId).orElseThrow { NoSuchElementException("가게를 찾을 수 없습니다.") }
 
-    // ── 구매자 앱 전용 ─────────────────────────────────────────
+    // ── 구매자 앱 가게 목록 (GET /stores) ────────────────────────────────────
 
-    fun getStoresBuyer(category: String?, memberId: Long): List<BuyerStoreResponse> {
+    fun getStoreListBuyer(
+        category: String?,
+        keyword: String?,
+        memberId: Long?,
+    ): List<StoreListItemResponse> {
         val categoryType = category?.let { runCatching { CategoryType.valueOf(it) }.getOrNull() }
-        val stores = if (categoryType != null) storeRepository.findByCategory(categoryType) else storeRepository.findAll()
+        val allStores = if (categoryType != null)
+            storeRepository.findByCategory(categoryType)
+        else
+            storeRepository.findAll()
+
         val today = LocalDate.now()
-        val member = memberService.findMember(memberId)
-        val wishlistedIds = wishlistRepository.findByMember(member).map { it.store.storeId }.toSet()
-        return stores.map { store ->
-            val products = productRepository.findByStoreAndAvailableDateAndStatus(store, today, ProductStatus.AVAILABLE)
-            BuyerStoreResponse.from(store, products, store.storeId in wishlistedIds)
+        val filtered = if (keyword != null)
+            allStores.filter { it.name.contains(keyword, ignoreCase = true) }
+        else
+            allStores
+
+        return filtered.map { store ->
+            val count = productRepository.findByStoreAndAvailableDateAndStatus(store, today, ProductStatus.AVAILABLE).size
+            StoreListItemResponse.from(store, availableProductCount = count)
         }
     }
 
-    fun getStoreBuyer(storeId: Long, memberId: Long): BuyerStoreResponse {
+    // ── 구매자 앱 가게 상세 (GET /stores/{storeId}) ───────────────────────────
+
+    fun getStoreDetailBuyer(storeId: Long): StoreDetailResponse {
         val store = findStore(storeId)
         val today = LocalDate.now()
-        val member = memberService.findMember(memberId)
-        val isWishlisted = wishlistRepository.existsByMemberAndStore(member, store)
         val products = productRepository.findByStoreAndAvailableDateAndStatus(store, today, ProductStatus.AVAILABLE)
-        return BuyerStoreResponse.from(store, products, isWishlisted)
+        return StoreDetailResponse.from(store, products)
     }
 
-    fun getWishlistBuyer(memberId: Long): List<BuyerStoreResponse> {
+    // ── 지도 마커 (GET /stores/map) ───────────────────────────────────────────
+
+    fun getMapMarkers(category: String?): List<StoreMarkerResponse> {
+        val categoryType = category?.let { runCatching { CategoryType.valueOf(it) }.getOrNull() }
+        val stores = if (categoryType != null)
+            storeRepository.findByCategory(categoryType)
+        else
+            storeRepository.findAll()
+        val today = LocalDate.now()
+        return stores.map { store ->
+            val count = productRepository.findByStoreAndAvailableDateAndStatus(store, today, ProductStatus.AVAILABLE).size
+            StoreMarkerResponse.from(store, availableProductCount = count)
+        }
+    }
+
+    // ── 상품 목록 (GET /products) ─────────────────────────────────────────────
+
+    fun getProductsBuyer(category: String?): List<ProductListItemResponse> {
+        val categoryType = category?.let { runCatching { CategoryType.valueOf(it) }.getOrNull() }
+        val stores = if (categoryType != null)
+            storeRepository.findByCategory(categoryType)
+        else
+            storeRepository.findAll()
+        val today = LocalDate.now()
+        return stores.flatMap { store ->
+            productRepository.findByStoreAndAvailableDateAndStatus(store, today, ProductStatus.AVAILABLE)
+                .map { ProductListItemResponse.from(it) }
+        }
+    }
+
+    // ── 상품 상세 (GET /products/{productId}) ────────────────────────────────
+
+    fun getProductDetailBuyer(productId: Long): ProductDetailResponse {
+        val product = productRepository.findById(productId)
+            .orElseThrow { NoSuchElementException("상품을 찾을 수 없습니다.") }
+        return ProductDetailResponse.from(product)
+    }
+
+    // ── 찜 목록 (GET /wishlist) ───────────────────────────────────────────────
+
+    fun getWishlistBuyer(memberId: Long): List<WishlistItemResponse> {
         val member = memberService.findMember(memberId)
         val today = LocalDate.now()
-        return wishlistRepository.findByMember(member).map { wishlist ->
-            val store = wishlist.store
-            val products = productRepository.findByStoreAndAvailableDateAndStatus(store, today, ProductStatus.AVAILABLE)
-            BuyerStoreResponse.from(store, products, true)
+        return wishlistRepository.findByMember(member).map { w ->
+            val store = w.store
+            val count = productRepository.findByStoreAndAvailableDateAndStatus(store, today, ProductStatus.AVAILABLE).size
+            WishlistItemResponse(
+                wishlistId = w.wishlistId,
+                storeId = store.storeId,
+                name = store.name,
+                thumbnailUrl = store.thumbnailUrl,
+                ratingAvg = store.ratingAvg,
+                availableProductCount = count,
+            )
         }
+    }
+
+    // ── 가게 등록 (POST /sellers/stores) ─────────────────────────────────────
+
+    @Transactional
+    fun createStore(sellerId: Long, req: CreateStoreRequest, thumbnailUrl: String? = null): Store {
+        val seller = memberService.findMember(sellerId)
+        val store = storeRepository.save(
+            Store(
+                owner = seller,
+                name = req.name,
+                description = req.description,
+                address = req.address,
+                latitude = req.latitude,
+                longitude = req.longitude,
+                phone = req.phone,
+                thumbnailUrl = thumbnailUrl,
+            )
+        )
+        req.categories.forEach { cat ->
+            val categoryType = runCatching { CategoryType.valueOf(cat) }
+                .getOrElse { throw IllegalArgumentException("지원하지 않는 카테고리: $cat") }
+            storeCategoryRepository.save(StoreCategory(store = store, category = categoryType))
+        }
+        return store
     }
 }

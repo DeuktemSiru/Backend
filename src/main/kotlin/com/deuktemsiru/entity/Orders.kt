@@ -1,7 +1,6 @@
 package com.deuktemsiru.entity
 
 import jakarta.persistence.*
-import io.swagger.v3.oas.annotations.media.Schema
 import org.hibernate.annotations.CreationTimestamp
 import org.hibernate.annotations.UpdateTimestamp
 import java.time.LocalDateTime
@@ -42,8 +41,7 @@ class Orders(
     val items: MutableList<OrderItem> = mutableListOf(),
 )
 
-@Schema(description = "주문 상태", allowableValues = ["PENDING", "PREPARING", "READY", "COMPLETED", "CANCELLED"])
-enum class OrderStatus { PENDING, PREPARING, READY, COMPLETED, CANCELLED }
+enum class OrderStatus { PENDING, CONFIRMED, PICKED_UP, CANCELLED }
 
 @Entity
 @Table(name = "order_item")
