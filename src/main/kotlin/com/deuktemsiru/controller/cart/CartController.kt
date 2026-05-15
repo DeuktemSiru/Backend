@@ -1,6 +1,8 @@
 package com.deuktemsiru.controller.cart
 
 import com.deuktemsiru.common.ApiResponse
+import com.deuktemsiru.security.AuthContext
+import com.deuktemsiru.service.CartService
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.*
@@ -32,49 +34,52 @@ data class CartResponse(
 
 @RestController
 @RequestMapping("/api/v1/cart")
-class CartController {
+class CartController(
+    private val cartService: CartService,
+    private val authContext: AuthContext,
+) {
 
     /**
      * POST /api/v1/cart
      * 장바구니 상품 추가
-     * TODO: Cart 엔티티 및 CartService 구현 필요
      */
     @PostMapping
     fun addToCart(
         @RequestBody req: CartAddRequest,
     ): ResponseEntity<ApiResponse<CartItem>> {
-        throw UnsupportedOperationException("장바구니 추가: 미구현 — Cart 엔티티 및 CartService 구현 필요")
+        val item = cartService.addToCart(authContext.getCurrentMemberId(), req.productId, req.quantity)
+        return ResponseEntity.status(HttpStatus.CREATED)
+            .body(ApiResponse.created(item, "장바구니에 담았습니다."))
     }
 
     /**
      * GET /api/v1/cart
      * 장바구니 목록 조회
-     * TODO: Cart 엔티티 및 CartService 구현 필요
      */
     @GetMapping
     fun getCart(): ApiResponse<CartResponse> {
-        throw UnsupportedOperationException("장바구니 조회: 미구현 — Cart 엔티티 및 CartService 구현 필요")
+        return ApiResponse.success(cartService.getCart(authContext.getCurrentMemberId()))
     }
 
     /**
      * DELETE /api/v1/cart/{cartItemId}
      * 장바구니 특정 상품 제거
-     * TODO: Cart 엔티티 및 CartService 구현 필요
      */
     @DeleteMapping("/{cartItemId}")
     fun removeFromCart(
         @PathVariable cartItemId: Long,
     ): ApiResponse<Unit> {
-        throw UnsupportedOperationException("장바구니 삭제: 미구현 — Cart 엔티티 및 CartService 구현 필요")
+        cartService.removeFromCart(authContext.getCurrentMemberId(), cartItemId)
+        return ApiResponse.success(Unit, "장바구니 상품을 삭제했습니다.")
     }
 
     /**
      * DELETE /api/v1/cart
      * 장바구니 전체 비우기 (주문 완료 후 자동 호출)
-     * TODO: Cart 엔티티 및 CartService 구현 필요
      */
     @DeleteMapping
     fun clearCart(): ApiResponse<Unit> {
-        throw UnsupportedOperationException("장바구니 전체 비우기: 미구현 — Cart 엔티티 및 CartService 구현 필요")
+        cartService.clearCart(authContext.getCurrentMemberId())
+        return ApiResponse.success(Unit, "장바구니를 비웠습니다.")
     }
 }

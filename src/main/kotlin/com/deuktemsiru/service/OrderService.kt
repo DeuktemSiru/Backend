@@ -26,6 +26,7 @@ import org.springframework.transaction.annotation.Transactional
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.time.temporal.TemporalAdjusters
+import kotlin.math.min
 
 @Service
 @Transactional(readOnly = true)
@@ -125,8 +126,23 @@ class OrderService(
         page: Int = 0,
         size: Int = 20,
     ): List<OrderDetailResponse> {
-        // TODO: status/date 필터, 페이지네이션 적용 예정
-        return getStoreOrderEntities(sellerId).map { OrderDetailResponse.from(it) }
+        var orders = getStoreOrderEntities(sellerId)
+        status?.let {
+            val target = runCatching { OrderStatus.valueOf(it.uppercase()) }
+                .getOrElse { throw IllegalArgumentException("지원하지 않는 주문 상태: $status") }
+            orders = orders.filter { order -> order.status == target }
+        }
+        date?.let {
+            val targetDate = runCatching { LocalDate.parse(it) }
+                .getOrElse { throw IllegalArgumentException("날짜 형식은 yyyy-MM-dd 이어야 합니다.") }
+            orders = orders.filter { order -> order.createdAt.toLocalDate() == targetDate }
+        }
+
+        val safeSize = size.coerceAtLeast(1)
+        val fromIndex = page.coerceAtLeast(0) * safeSize
+        if (fromIndex >= orders.size) return emptyList()
+        val toIndex = min(fromIndex + safeSize, orders.size)
+        return orders.subList(fromIndex, toIndex).map { OrderDetailResponse.from(it) }
     }
 
     fun getStoreOrder(sellerId: Long, orderId: Long): OrderDetailResponse {

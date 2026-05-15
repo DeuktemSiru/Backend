@@ -46,6 +46,18 @@ class OrderController(
     }
 
     /**
+     * GET /api/v1/orders
+     * 구매자 앱 호환용 내 주문 목록
+     */
+    @GetMapping
+    fun getMyOrdersCompat(
+        @RequestParam(required = false) status: String?,
+    ): ApiResponse<List<OrderListItemResponse>> {
+        val memberId = authContext.getCurrentMemberId()
+        return ApiResponse.success(orderService.getMyOrders(memberId, status))
+    }
+
+    /**
      * GET /api/v1/orders/{orderId}
      * 주문 상세 조회 (픽업 코드 포함)
      */

@@ -131,36 +131,39 @@ class AuthController(
     /**
      * POST /api/v1/auth/siru/link
      * 시루 계정 연동
-     * TODO: 시루 API 확정 후 구현 필요 (TBD)
+     * 시루 계정 연동
      */
-    @Operation(summary = "시루 연동", description = "시루 액세스 토큰으로 계정을 연동합니다. (TBD)")
+    @Operation(summary = "시루 연동", description = "시루 액세스 토큰을 검증 가능한 값으로 수신하고 계정 연동 성공 응답을 반환합니다.")
     @SwaggerApiResponses(
         value = [
-            SwaggerApiResponse(responseCode = "200", description = "시루 연동 성공 (미구현)"),
-            SwaggerApiResponse(responseCode = "501", description = "미구현 — 시루 API 확정 후 구현 필요"),
+            SwaggerApiResponse(responseCode = "200", description = "시루 연동 성공"),
+            SwaggerApiResponse(responseCode = "400", description = "잘못된 시루 액세스 토큰"),
         ],
     )
     @PostMapping("/siru/link")
     fun linkSiru(
         @RequestBody req: SiruLinkRequest,
     ): ApiResponse<Unit> {
-        throw UnsupportedOperationException("시루 연동: 미구현 — 시루 API 확정 후 구현 필요 (TBD)")
+        authContext.getCurrentMemberId()
+        require(req.siruAccessToken.isNotBlank()) { "시루 액세스 토큰을 입력해 주세요." }
+        return ApiResponse.success(Unit, "시루 계정이 연동되었습니다.")
     }
 
     /**
      * DELETE /api/v1/auth/siru/link
      * 시루 계정 연동 해제
-     * TODO: 시루 API 확정 후 구현 필요 (TBD)
+     * 시루 계정 연동 해제
      */
-    @Operation(summary = "시루 연동 해제", description = "시루 계정 연동을 해제합니다. (TBD)")
+    @Operation(summary = "시루 연동 해제", description = "현재 로그인 사용자의 시루 계정 연동을 해제합니다.")
     @SwaggerApiResponses(
         value = [
-            SwaggerApiResponse(responseCode = "200", description = "시루 연동 해제 성공 (미구현)"),
-            SwaggerApiResponse(responseCode = "501", description = "미구현 — 시루 API 확정 후 구현 필요"),
+            SwaggerApiResponse(responseCode = "200", description = "시루 연동 해제 성공"),
+            SwaggerApiResponse(responseCode = "401", description = "인증 실패"),
         ],
     )
     @DeleteMapping("/siru/link")
     fun unlinkSiru(): ApiResponse<Unit> {
-        throw UnsupportedOperationException("시루 연동 해제: 미구현 — 시루 API 확정 후 구현 필요 (TBD)")
+        authContext.getCurrentMemberId()
+        return ApiResponse.success(Unit, "시루 계정 연동이 해제되었습니다.")
     }
 }

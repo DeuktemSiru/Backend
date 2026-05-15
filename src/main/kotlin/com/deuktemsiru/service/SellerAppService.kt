@@ -7,6 +7,7 @@ import com.deuktemsiru.entity.Notification
 import com.deuktemsiru.entity.NotificationType
 import com.deuktemsiru.entity.OrderStatus
 import com.deuktemsiru.entity.Product
+import com.deuktemsiru.entity.ProductImage
 import com.deuktemsiru.entity.ProductStatus
 import com.deuktemsiru.repository.BusinessInfoRepository
 import com.deuktemsiru.repository.MenuItemRepository
@@ -79,6 +80,10 @@ class SellerAppService(
 
     @Transactional
     fun createProduct(sellerId: Long, req: SaleItemRequest): SellerSaleItemResponse {
+        return SellerSaleItemResponse.from(createProductEntity(sellerId, req))
+    }
+
+    private fun createProductEntity(sellerId: Long, req: SaleItemRequest): Product {
         require(req.quantityTotal > 0) { "판매 수량은 1개 이상이어야 합니다." }
         require(req.discountPrice > 0) { "할인가는 1원 이상이어야 합니다." }
         require(req.discountPrice < req.originalPrice) { "할인가는 정가보다 낮아야 합니다." }
@@ -90,7 +95,7 @@ class SellerAppService(
                 .also { mi -> require(mi.store.storeId == store.storeId) { "내 매장의 메뉴만 등록할 수 있습니다." } }
         }
 
-        val product = productRepository.save(
+        return productRepository.save(
             Product(
                 store = store,
                 menuItem = menuItem,
@@ -108,7 +113,6 @@ class SellerAppService(
                 availableDate = LocalDate.parse(req.availableDate),
             )
         )
-        return SellerSaleItemResponse.from(product)
     }
 
     @Transactional
@@ -117,9 +121,15 @@ class SellerAppService(
         req: SaleItemRequest,
         images: List<org.springframework.web.multipart.MultipartFile>,
     ): SellerSaleItemResponse {
-        val response = createProduct(sellerId, req)
-        // 이미지 저장 (TODO: ProductImage 연동)
-        return response
+        val product = createProductEntity(sellerId, req)
+        images.filter { !it.isEmpty }.forEachIndexed { index, image ->
+            val imageUrl = menuImageStorageService.save(image)
+            if (imageUrl != null) {
+                product.images += ProductImage(product = product, imageUrl = imageUrl, displayOrder = index)
+            }
+        }
+        product.thumbnailUrl = product.images.minByOrNull { it.displayOrder }?.imageUrl ?: product.thumbnailUrl
+        return SellerSaleItemResponse.from(product)
     }
 
     @Transactional

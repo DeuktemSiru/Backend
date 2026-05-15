@@ -15,7 +15,7 @@ class StoreController(
 ) {
     /**
      * GET /api/v1/stores
-     * 주변 가게 목록 — category·keyword 필터 지원 (위치 기반 정렬은 TODO)
+     * 주변 가게 목록 — category·keyword·radius 필터와 거리 정렬 지원
      */
     @GetMapping
     fun getStores(
@@ -28,8 +28,18 @@ class StoreController(
         @RequestParam(defaultValue = "0") page: Int,
         @RequestParam(defaultValue = "20") size: Int,
     ): ApiResponse<StoreListResponse> {
-        val stores = storeService.getStoreListBuyer(category, keyword, memberId = null)
-        return ApiResponse.success(StoreListResponse(stores = stores, hasNext = false))
+        val stores = storeService.getStoreListBuyer(
+            category = category,
+            keyword = keyword,
+            memberId = null,
+            latitude = latitude,
+            longitude = longitude,
+            radius = radius,
+            sort = sort,
+            page = page,
+            size = size,
+        )
+        return ApiResponse.success(StoreListResponse(stores = stores.items, hasNext = stores.hasNext))
     }
 
     /**
