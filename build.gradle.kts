@@ -21,7 +21,6 @@ repositories {
 }
 
 dependencies {
-	implementation("org.springframework.boot:spring-boot-h2console")
 	implementation("org.springframework.boot:spring-boot-starter-data-jpa")
 	implementation("org.springframework.boot:spring-boot-starter-security")
 	implementation("org.springframework.boot:spring-boot-starter-webmvc")
@@ -30,8 +29,9 @@ dependencies {
 	implementation("org.jetbrains.kotlin:kotlin-reflect")
 	implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:3.0.3")
 	implementation("tools.jackson.module:jackson-module-kotlin")
-	runtimeOnly("com.h2database:h2")
 	runtimeOnly("org.postgresql:postgresql")
+	testImplementation("org.springframework.boot:spring-boot-testcontainers")
+	testImplementation("org.testcontainers:postgresql")
 	testImplementation("org.springframework.boot:spring-boot-starter-data-jpa-test")
 	testImplementation("org.springframework.boot:spring-boot-starter-security-test")
 	testImplementation("org.springframework.boot:spring-boot-starter-webmvc-test")

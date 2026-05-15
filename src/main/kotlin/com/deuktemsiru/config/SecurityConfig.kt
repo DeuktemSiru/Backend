@@ -22,7 +22,6 @@ class SecurityConfig(
     fun filterChain(http: HttpSecurity): SecurityFilterChain {
         http
             .csrf { it.disable() }
-            .headers { headers -> headers.frameOptions { it.disable() } }
             .sessionManagement { it.sessionCreationPolicy(SessionCreationPolicy.STATELESS) }
             .authorizeHttpRequests { auth ->
                 val publicMatchers = mutableListOf(
@@ -38,9 +37,7 @@ class SecurityConfig(
                     // 정적 업로드 파일
                     "/uploads/**",
                 )
-                // 운영(prod) 프로필에서는 dev-endpoints-enabled=false 로 차단
                 if (devEndpointsEnabled) {
-                    publicMatchers += "/h2-console/**"
                     publicMatchers += "/api/v1/auth/debug/login"
                 }
                 auth.requestMatchers(*publicMatchers.toTypedArray()).permitAll()
