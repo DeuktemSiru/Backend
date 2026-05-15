@@ -10,6 +10,7 @@ interface OrderRepository : JpaRepository<Orders, Long> {
     fun findByConsumerOrderByCreatedAtDesc(consumer: Member): List<Orders>
     fun findByStoreOrderByCreatedAtDesc(store: Store): List<Orders>
     fun findByStoreAndStatus(store: Store, status: OrderStatus): List<Orders>
+    fun findByStoreAndStatusOrderByCreatedAtDesc(store: Store, status: OrderStatus): List<Orders>
     fun findByStoreAndStatusIn(store: Store, statuses: List<OrderStatus>): List<Orders>
     fun existsByPickupCode(pickupCode: String): Boolean
     fun findByPickupCode(pickupCode: String): Orders?

@@ -6,6 +6,7 @@ import com.deuktemsiru.entity.OrderStatus
 import com.deuktemsiru.entity.PaymentMethod
 import com.deuktemsiru.entity.Settlement
 import com.deuktemsiru.entity.SettlementStatus
+import com.deuktemsiru.entity.Store
 import com.deuktemsiru.repository.OrderRepository
 import com.deuktemsiru.repository.SettlementRepository
 import com.deuktemsiru.repository.StoreRepository
@@ -51,7 +52,7 @@ class SettlementService(
 
         // 요청 월이 현재 월이면 실시간 집계 항목을 상단에 추가
         val isCurrentMonth = year == now.year && month == now.monthValue
-        val computedCurrentMonth = if (isCurrentMonth) currentMonthSettlement(store.storeId, targetStart, targetEnd) else null
+        val computedCurrentMonth = if (isCurrentMonth) currentMonthSettlement(store, targetStart, targetEnd) else null
 
         return SettlementListResponse((listOfNotNull(computedCurrentMonth) + saved))
     }
@@ -66,7 +67,7 @@ class SettlementService(
         val existing = settlementRepository.findByStoreOrderByPeriodStartDesc(store)
             .firstOrNull { it.periodStart == start && it.periodEnd == end && it.status == SettlementStatus.PENDING }
         val settlement = existing ?: run {
-            val computed = currentMonthSettlement(store.storeId, start, end)
+            val computed = currentMonthSettlement(store, start, end)
                 ?: throw IllegalStateException("출금 신청 가능한 정산 금액이 없습니다.")
             settlementRepository.save(
                 Settlement(
@@ -92,10 +93,8 @@ class SettlementService(
         )
     }
 
-    private fun currentMonthSettlement(storeId: Long, start: LocalDate, end: LocalDate): SettlementItem? {
-        val totalSales = orderRepository.findAll()
-            .filter { it.store.storeId == storeId }
-            .filter { it.status == OrderStatus.PICKED_UP }
+    private fun currentMonthSettlement(store: Store, start: LocalDate, end: LocalDate): SettlementItem? {
+        val totalSales = orderRepository.findByStoreAndStatus(store, OrderStatus.PICKED_UP)
             .filter {
                 val date = it.createdAt.toLocalDate()
                 !date.isBefore(start) && !date.isAfter(end)

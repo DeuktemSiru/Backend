@@ -14,12 +14,17 @@ data class CartAddRequest(
     val quantity: Int,
 )
 
+data class CartUpdateRequest(
+    val quantity: Int,
+)
+
 data class CartItem(
     val cartItemId: Long,
     val productId: Long,
     val productName: String,
     val storeId: Long,
     val storeName: String,
+    val originalPrice: Int,
     val discountPrice: Int,
     val quantity: Int,
     val imageUrl: String?,
@@ -71,6 +76,15 @@ class CartController(
     ): ApiResponse<Unit> {
         cartService.removeFromCart(authContext.getCurrentMemberId(), cartItemId)
         return ApiResponse.success(Unit, "장바구니 상품을 삭제했습니다.")
+    }
+
+    @PatchMapping("/{cartItemId}")
+    fun updateCartItem(
+        @PathVariable cartItemId: Long,
+        @RequestBody req: CartUpdateRequest,
+    ): ApiResponse<CartItem> {
+        val item = cartService.updateQuantity(authContext.getCurrentMemberId(), cartItemId, req.quantity)
+        return ApiResponse.success(item, "장바구니 수량을 변경했습니다.")
     }
 
     /**

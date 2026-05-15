@@ -10,7 +10,6 @@ import com.deuktemsiru.dto.SellerSalesResponse
 import com.deuktemsiru.dto.TopMenu
 import com.deuktemsiru.dto.TopProduct
 import com.deuktemsiru.dto.UpdateOrderStatusRequest
-import com.deuktemsiru.dto.categoryEmoji
 import com.deuktemsiru.entity.MemberRole
 import com.deuktemsiru.entity.OrderItem
 import com.deuktemsiru.entity.OrderStatus
@@ -18,9 +17,7 @@ import com.deuktemsiru.entity.Orders
 import com.deuktemsiru.entity.Payment
 import com.deuktemsiru.entity.PaymentMethod
 import com.deuktemsiru.entity.PaymentStatus
-import com.deuktemsiru.entity.Product
 import com.deuktemsiru.entity.ProductStatus
-import com.deuktemsiru.entity.Store
 import com.deuktemsiru.repository.MemberStatsRepository
 import com.deuktemsiru.repository.OrderRepository
 import com.deuktemsiru.repository.PaymentRepository
@@ -42,7 +39,6 @@ class OrderService(
     private val productRepository: ProductRepository,
     private val memberStatsRepository: MemberStatsRepository,
     private val memberService: MemberService,
-    private val storeService: StoreService,
 ) {
 
     @Transactional
@@ -52,8 +48,9 @@ class OrderService(
         require(req.items.isNotEmpty()) { "주문 항목이 없습니다." }
 
         // 첫 번째 상품에서 가게 결정
-        val firstProduct = productRepository.findById(req.items.first().productId)
-            .orElseThrow { NoSuchElementException("상품을 찾을 수 없습니다.") }
+        val firstProduct = productRepository.findById(
+            req.items.ifEmpty { throw IllegalArgumentException("items must not be empty") }.first().productId
+        ).orElseThrow { NoSuchElementException("상품을 찾을 수 없습니다.") }
         val store = firstProduct.store
 
         val order = Orders(
@@ -87,7 +84,12 @@ class OrderService(
         return CreateOrderResponse.from(saved, payment)
     }
 
-    fun getMyOrders(consumerId: Long, statusFilter: String? = null): List<OrderListItemResponse> {
+    fun getMyOrders(
+        consumerId: Long,
+        statusFilter: String? = null,
+        page: Int = 0,
+        size: Int = 20,
+    ): List<OrderListItemResponse> {
         val consumer = memberService.findMember(consumerId)
         var orders = orderRepository.findByConsumerOrderByCreatedAtDesc(consumer)
         if (statusFilter != null) {
@@ -95,12 +97,17 @@ class OrderService(
                 .getOrElse { throw IllegalArgumentException("지원하지 않는 주문 상태: $statusFilter") }
             orders = orders.filter { it.status == target }
         }
-        return orders.map { OrderListItemResponse.from(it) }
+        val safeSize = size.coerceAtLeast(1).coerceAtMost(100)
+        val fromIndex = page.coerceAtLeast(0) * safeSize
+        if (fromIndex >= orders.size) return emptyList()
+        return orders.subList(fromIndex, min(fromIndex + safeSize, orders.size))
+            .map { OrderListItemResponse.from(it) }
     }
 
-    fun getOrder(orderId: Long): OrderDetailResponse {
+    fun getOrder(consumerId: Long, orderId: Long): OrderDetailResponse {
         val order = orderRepository.findById(orderId)
             .orElseThrow { NoSuchElementException("주문을 찾을 수 없습니다.") }
+        require(order.consumer.memberId == consumerId) { "접근 권한이 없습니다." }
         return OrderDetailResponse.from(order, latestPayment(order))
     }
 
@@ -114,17 +121,7 @@ class OrderService(
             order.status == OrderStatus.PENDING || order.status == OrderStatus.CONFIRMED
         ) { "픽업 완료되거나 이미 취소된 주문은 취소할 수 없습니다." }
 
-        order.status = OrderStatus.CANCELLED
-        latestPayment(order)?.let {
-            it.status = PaymentStatus.REFUNDED
-        }
-        // 재고 복구
-        order.items.forEach { item ->
-            item.product.quantityRemaining += item.quantity
-            if (item.product.status == ProductStatus.SOLD_OUT) {
-                item.product.status = ProductStatus.AVAILABLE
-            }
-        }
+        cancelAndRefund(order)
         return OrderDetailResponse.from(order, latestPayment(order))
     }
 
@@ -187,9 +184,10 @@ class OrderService(
         require(canTransition(previousStatus, req.status)) {
             "주문 상태를 ${order.status}에서 ${req.status}(으)로 변경할 수 없습니다."
         }
-        order.status = req.status
         if (req.status == OrderStatus.CANCELLED) {
-            latestPayment(order)?.let { it.status = PaymentStatus.REFUNDED }
+            cancelAndRefund(order)
+        } else {
+            order.status = req.status
         }
         if (previousStatus != OrderStatus.PICKED_UP && req.status == OrderStatus.PICKED_UP) {
             applyPickupStats(order)
@@ -214,7 +212,7 @@ class OrderService(
         val store = storeRepository.findByOwner(seller)
             .orElseThrow { NoSuchElementException("등록된 가게가 없습니다.") }
         val allOrders = orderRepository.findByStoreOrderByCreatedAtDesc(store)
-            .filter { it.status != OrderStatus.CANCELLED }
+            .filter { it.status == OrderStatus.PICKED_UP }
         val targetDayOrders = allOrders.filter { it.createdAt.toLocalDate() == targetDate }
         return SalesResponse(
             totalAmount = targetDayOrders.sumOf { it.totalPrice },
@@ -231,7 +229,7 @@ class OrderService(
             totalAmount = sales.totalAmount,
             totalOrders = sales.totalOrders,
             chartData = sales.chartData,
-            topMenus = topMenus(getStoreOrderEntities(sellerId).filter { it.status != OrderStatus.CANCELLED }),
+            topMenus = topMenus(getStoreOrderEntities(sellerId).filter { it.status == OrderStatus.PICKED_UP }),
         )
     }
 
@@ -263,6 +261,35 @@ class OrderService(
     private fun latestPayment(order: Orders): Payment? =
         paymentRepository.findFirstByOrderOrderByPaymentIdDesc(order).orElse(null)
 
+    private fun cancelAndRefund(order: Orders) {
+        if (order.status == OrderStatus.CANCELLED) return
+
+        order.status = OrderStatus.CANCELLED
+        val payment = latestPayment(order)
+        if (payment != null && payment.status != PaymentStatus.REFUNDED) {
+            if (payment.method == PaymentMethod.SIRU) {
+                order.consumer.siruBalance += payment.amount
+            }
+            paymentRepository.save(
+                Payment(
+                    order = order,
+                    method = payment.method,
+                    amount = payment.amount,
+                    status = PaymentStatus.REFUNDED,
+                    paidAt = java.time.LocalDateTime.now(),
+                    externalTransactionId = "REFUND-${payment.paymentId}-${System.currentTimeMillis()}",
+                )
+            )
+        }
+
+        order.items.forEach { item ->
+            item.product.quantityRemaining += item.quantity
+            if (item.product.status == ProductStatus.SOLD_OUT) {
+                item.product.status = ProductStatus.AVAILABLE
+            }
+        }
+    }
+
     private fun applyPickupStats(order: Orders) {
         val stats = memberStatsRepository.findByMember(order.consumer).orElseGet {
             com.deuktemsiru.entity.MemberStats(member = order.consumer)
@@ -277,45 +304,60 @@ class OrderService(
 
     private fun salesData(period: String, targetDate: LocalDate, orders: List<Orders>): List<DailySales> =
         when (period.uppercase()) {
+            "YEAR" -> yearlySales(targetDate.year, orders)
             "MONTH" -> monthlySales(targetDate, orders)
             "WEEK"  -> weeklySales(targetDate, orders)
             else    -> dailySales(targetDate, orders)  // DAY (기본값)
         }
 
+    /**
+     * 시간 버킷(label, predicate) 목록을 받아 DailySales 리스트를 생성하는 공통 헬퍼.
+     * dailySales / weeklySales / monthlySales / yearlySales 모두 이 헬퍼를 통해 구성됩니다.
+     */
+    private fun buildSalesChart(
+        orders: List<Orders>,
+        buckets: List<Pair<String, (Orders) -> Boolean>>,
+    ): List<DailySales> = buckets.map { (label, matches) ->
+        DailySales(label, orders.sumOf { if (matches(it)) it.totalPrice else 0 })
+    }
+
     private fun dailySales(date: LocalDate, orders: List<Orders>): List<DailySales> =
-        (0..23).map { hour ->
-            val amount = orders.sumOf { order ->
-                if (order.createdAt.toLocalDate() == date && order.createdAt.hour == hour) order.totalPrice else 0
+        buildSalesChart(orders, (0..23).map { hour ->
+            "${hour}시" to { order: Orders ->
+                order.createdAt.toLocalDate() == date && order.createdAt.hour == hour
             }
-            DailySales("${hour}시", amount)
-        }
+        })
 
     private fun monthlySales(targetMonth: LocalDate, orders: List<Orders>): List<DailySales> {
         val firstDay = targetMonth.withDayOfMonth(1)
         val lastDay = targetMonth.with(TemporalAdjusters.lastDayOfMonth())
-        return generateSequence(firstDay) { it.plusDays(7) }
+        val buckets = generateSequence(firstDay) { it.plusDays(7) }
             .takeWhile { !it.isAfter(lastDay) }
             .mapIndexed { index, weekStart ->
                 val weekEnd = minOf(weekStart.plusDays(6), lastDay)
-                DailySales("${index + 1}주", orders.sumBetween(weekStart, weekEnd))
-            }
-            .toList()
+                "${index + 1}주" to { order: Orders ->
+                    val d = order.createdAt.toLocalDate()
+                    !d.isBefore(weekStart) && !d.isAfter(weekEnd)
+                }
+            }.toList()
+        return buildSalesChart(orders, buckets)
     }
 
     private fun yearlySales(year: Int, orders: List<Orders>): List<DailySales> =
-        (1..12).map { month ->
-            DailySales("${month}월", orders.sumOf { order ->
-                if (order.createdAt.year == year && order.createdAt.monthValue == month) order.totalPrice else 0
-            })
-        }
+        buildSalesChart(orders, (1..12).map { month ->
+            "${month}월" to { order: Orders ->
+                order.createdAt.year == year && order.createdAt.monthValue == month
+            }
+        })
 
     private fun weeklySales(referenceDate: LocalDate, orders: List<Orders>): List<DailySales> {
         val startDay = referenceDate.minusDays(referenceDate.dayOfWeek.value.toLong() - 1) // 해당 주 월요일
         val formatter = DateTimeFormatter.ofPattern("MM/dd")
-        return (0..6).map { i ->
+        val buckets = (0..6).map { i ->
             val date = startDay.plusDays(i.toLong())
-            DailySales(date.format(formatter), orders.sumOn(date))
+            date.format(formatter) to { order: Orders -> order.createdAt.toLocalDate() == date }
         }
+        return buildSalesChart(orders, buckets)
     }
 
     private fun List<Orders>.sumOn(date: LocalDate) =
@@ -350,10 +392,12 @@ class OrderService(
 
     private fun generatePickupCode(): String {
         val chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-        repeat(10) {
-            val code = (1..4).map { chars.random() }.joinToString("")
-            if (!orderRepository.existsByPickupCode(code)) return code
-        }
+        // 6자리를 먼저 시도하여 충돌 가능성을 최소화(36^6 ≈ 2억 가지).
+        // 극히 드문 충돌의 경우 UUID 기반 코드를 사용합니다.
+        val candidate = (1..6).map { chars.random() }.joinToString("")
+        if (!orderRepository.existsByPickupCode(candidate)) return candidate
+        val fallback = java.util.UUID.randomUUID().toString().replace("-", "").uppercase().take(8)
+        if (!orderRepository.existsByPickupCode(fallback)) return fallback
         error("픽업 코드를 생성할 수 없습니다.")
     }
 

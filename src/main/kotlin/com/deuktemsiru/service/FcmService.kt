@@ -2,6 +2,7 @@ package com.deuktemsiru.service
 
 import com.deuktemsiru.entity.FcmToken
 import com.deuktemsiru.repository.FcmTokenRepository
+import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 
@@ -11,6 +12,7 @@ class FcmService(
     private val fcmTokenRepository: FcmTokenRepository,
     private val memberService: MemberService,
 ) {
+    private val log = LoggerFactory.getLogger(FcmService::class.java)
 
     @Transactional
     fun registerToken(memberId: Long, token: String, deviceInfo: String?) {
@@ -35,7 +37,7 @@ class FcmService(
         // 활성 토큰 개수를 반환해 운영 연동 지점을 명확히 남긴다.
         return activeTokens.size.also {
             if (it > 0) {
-                println("FCM stub: $it token(s), title=$title, body=$body")
+                log.info("FCM stub: {} token(s), title={}, body={}", it, title, body)
             }
         }
     }

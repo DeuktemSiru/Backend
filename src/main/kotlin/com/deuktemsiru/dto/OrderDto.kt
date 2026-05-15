@@ -49,12 +49,16 @@ data class CreateOrderResponse(
 
 // ── GET /orders/{orderId} 응답 ────────────────────────────────────────────────
 data class OrderItemDetailResponse(
+    val productId: Long,
+    val menuItemId: Long?,
     val productName: String,
     val quantity: Int,
     val unitPrice: Int,
 ) {
     companion object {
         fun from(item: OrderItem) = OrderItemDetailResponse(
+            productId = item.product.productId,
+            menuItemId = item.product.menuItem?.menuItemId,
             productName = item.product.name,
             quantity = item.quantity,
             unitPrice = item.unitPrice,
@@ -64,27 +68,39 @@ data class OrderItemDetailResponse(
 
 data class OrderDetailResponse(
     val orderId: Long,
+    val orderNumber: String,
+    val customerName: String,
     val pickupCode: String?,
+    val pickupTime: String?,
     val status: OrderStatus,
     val totalPrice: Int,
     val storeName: String,
     val items: List<OrderItemDetailResponse>,
     val payment: PaymentInfo,
+    val createdAt: String,
 ) {
     companion object {
-        fun from(order: Orders, payment: Payment? = null) = OrderDetailResponse(
-            orderId = order.orderId,
-            pickupCode = order.pickupCode,
-            status = order.status,
-            totalPrice = order.totalPrice,
-            storeName = order.store.name,
-            items = order.items.map { OrderItemDetailResponse.from(it) },
-            payment = PaymentInfo(
-                method = payment?.method?.name ?: "CASH",
-                status = payment?.status?.name
-                    ?: if (order.status == OrderStatus.CANCELLED) "REFUNDED" else "PENDING",
-            ),
-        )
+        fun from(order: Orders, payment: Payment? = null): OrderDetailResponse {
+            val firstProduct = order.items.firstOrNull()?.product
+            val pickupTime = firstProduct?.let { "${it.pickupStart}~${it.pickupEnd}" }
+            return OrderDetailResponse(
+                orderId = order.orderId,
+                orderNumber = "#${order.orderId}",
+                customerName = order.consumer.nickname,
+                pickupCode = order.pickupCode,
+                pickupTime = pickupTime,
+                status = order.status,
+                totalPrice = order.totalPrice,
+                storeName = order.store.name,
+                items = order.items.map { OrderItemDetailResponse.from(it) },
+                payment = PaymentInfo(
+                    method = payment?.method?.name ?: "CASH",
+                    status = payment?.status?.name
+                        ?: if (order.status == OrderStatus.CANCELLED) "REFUNDED" else "PENDING",
+                ),
+                createdAt = order.createdAt.toString(),
+            )
+        }
     }
 }
 

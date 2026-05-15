@@ -33,7 +33,7 @@ class OrderController(
 
     /**
      * GET /api/v1/orders/my
-     * 내 주문 목록 (status 필터 선택)
+     * 내 주문 목록 (status 필터 선택, 페이지네이션)
      */
     @GetMapping("/my")
     fun getMyOrders(
@@ -42,7 +42,7 @@ class OrderController(
         @RequestParam(defaultValue = "20") size: Int,
     ): ApiResponse<List<OrderListItemResponse>> {
         val memberId = authContext.getCurrentMemberId()
-        return ApiResponse.success(orderService.getMyOrders(memberId, status))
+        return ApiResponse.success(orderService.getMyOrders(memberId, status, page, size))
     }
 
     /**
@@ -52,9 +52,11 @@ class OrderController(
     @GetMapping
     fun getMyOrdersCompat(
         @RequestParam(required = false) status: String?,
+        @RequestParam(defaultValue = "0") page: Int,
+        @RequestParam(defaultValue = "20") size: Int,
     ): ApiResponse<List<OrderListItemResponse>> {
         val memberId = authContext.getCurrentMemberId()
-        return ApiResponse.success(orderService.getMyOrders(memberId, status))
+        return ApiResponse.success(orderService.getMyOrders(memberId, status, page, size))
     }
 
     /**
@@ -65,7 +67,8 @@ class OrderController(
     fun getOrder(
         @PathVariable orderId: Long,
     ): ApiResponse<OrderDetailResponse> {
-        return ApiResponse.success(orderService.getOrder(orderId))
+        val memberId = authContext.getCurrentMemberId()
+        return ApiResponse.success(orderService.getOrder(memberId, orderId))
     }
 
     /**

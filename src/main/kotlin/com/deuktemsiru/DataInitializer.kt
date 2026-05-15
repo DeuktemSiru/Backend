@@ -2,6 +2,7 @@ package com.deuktemsiru
 
 import com.deuktemsiru.entity.*
 import com.deuktemsiru.repository.*
+import org.slf4j.LoggerFactory
 import org.springframework.boot.ApplicationArguments
 import org.springframework.boot.ApplicationRunner
 import org.springframework.stereotype.Component
@@ -17,11 +18,13 @@ class DataInitializer(
     private val productRepository: ProductRepository,
 ) : ApplicationRunner {
 
+    private val log = LoggerFactory.getLogger(DataInitializer::class.java)
+
     override fun run(args: ApplicationArguments) {
         // 이미 데이터가 있으면 초기화 건너뜀 (서버 재시작 시 중복 방지)
         if (memberRepository.count() > 0) {
             normalizeExistingSampleData()
-            println("=== 이미 샘플 데이터가 존재합니다. 초기화를 건너뜁니다. ===")
+            log.info("=== 이미 샘플 데이터가 존재합니다. 초기화를 건너뜁니다. ===")
             return
         }
 
@@ -215,7 +218,7 @@ class DataInitializer(
             )
         }
 
-        println("=== 샘플 데이터 초기화 완료 ===")
+        log.info("=== 샘플 데이터 초기화 완료 ===")
     }
 
     private fun normalizeExistingSampleData() {

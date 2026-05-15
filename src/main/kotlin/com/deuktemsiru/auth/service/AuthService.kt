@@ -16,7 +16,9 @@ import com.deuktemsiru.repository.RefreshTokenRepository
 import com.deuktemsiru.security.JwtService
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import java.security.MessageDigest
 import java.time.LocalDateTime
+import java.util.Base64
 
 @Service
 @Transactional(readOnly = true)
@@ -40,22 +42,22 @@ class AuthService(
         val email = userInfo.email ?: "$providerId@kakao.local"
         val nickname = userInfo.nickname ?: "카카오사용자"
 
-        val isNewMember = !memberRepository.findByProviderAndProviderId(MemberProvider.KAKAO, providerId).isPresent
-
-        val member = memberRepository.findByProviderAndProviderId(MemberProvider.KAKAO, providerId)
-            .orElseGet {
-                memberRepository.save(
-                    Member(
-                        provider = MemberProvider.KAKAO,
-                        providerId = providerId,
-                        email = email,
-                        name = nickname,
-                        nickname = nickname,
-                        profileImageUrl = userInfo.profileImageUrl,
-                        role = req.role,
-                    )
+        // findByProviderAndProviderId is called once; result is reused for both isNewMember and member lookup
+        val existing = memberRepository.findByProviderAndProviderId(MemberProvider.KAKAO, providerId)
+        val isNewMember = !existing.isPresent
+        val member = existing.orElseGet {
+            memberRepository.save(
+                Member(
+                    provider = MemberProvider.KAKAO,
+                    providerId = providerId,
+                    email = email,
+                    name = nickname,
+                    nickname = nickname,
+                    profileImageUrl = userInfo.profileImageUrl,
+                    role = req.role,
                 )
-            }
+            )
+        }
 
         // 프로필 정보 최신화 (닉네임·이미지는 카카오에서 변경될 수 있음)
         member.nickname = nickname
@@ -92,19 +94,7 @@ class AuthService(
             )
         }
 
-        val member = memberRepository.findByProviderAndProviderId(MemberProvider.KAKAO, debugUser.providerId)
-            .orElseGet {
-                memberRepository.save(
-                    Member(
-                        provider = MemberProvider.KAKAO,
-                        providerId = debugUser.providerId,
-                        email = debugUser.email,
-                        name = debugUser.name,
-                        nickname = debugUser.nickname,
-                        role = debugUser.role,
-                    )
-                )
-            }
+        val member = findOrCreateDebugMember(debugUser)
 
         val accessToken = jwtService.createAccessToken(member)
         val refreshToken = jwtService.createRefreshToken(member)
@@ -134,6 +124,7 @@ class AuthService(
     /**
      * Refresh Token으로 Access Token 갱신.
      * DB 조회 + JWT 서명·만료·타입 이중 검증.
+     * DB에는 토큰의 SHA-256 해시만 저장되므로 조회 전에 해싱합니다.
      */
     @Transactional
     fun refresh(req: TokenRefreshRequest): TokenResponse {
@@ -141,8 +132,8 @@ class AuthService(
         jwtService.validateRefreshToken(req.refreshToken)
             ?: throw UnauthorizedException("유효하지 않은 리프레시 토큰입니다.")
 
-        // 2) DB에서 미폐기 토큰 조회
-        val storedToken = refreshTokenRepository.findByTokenAndIsRevokedFalse(req.refreshToken)
+        // 2) DB에서 미폐기 토큰 조회 (해시 기반)
+        val storedToken = refreshTokenRepository.findByTokenAndIsRevokedFalse(hashToken(req.refreshToken))
             .orElseThrow { UnauthorizedException("이미 로그아웃된 리프레시 토큰입니다.") }
 
         // 3) DB 만료 시각 재확인
@@ -169,12 +160,38 @@ class AuthService(
 
     // ──────────────────────── 내부 유틸 ────────────────────────
 
+    /**
+     * 디버그 사용자를 DB에서 조회하거나, 없으면 새로 생성합니다.
+     * kakaoLogin / debugLogin 양쪽에서 공유하는 member lookup/create 패턴을 하나로 통합합니다.
+     */
+    private fun findOrCreateDebugMember(debugUser: DebugUser): Member =
+        memberRepository.findByProviderAndProviderId(MemberProvider.KAKAO, debugUser.providerId)
+            .orElseGet {
+                memberRepository.save(
+                    Member(
+                        provider = MemberProvider.KAKAO,
+                        providerId = debugUser.providerId,
+                        email = debugUser.email,
+                        name = debugUser.name,
+                        nickname = debugUser.nickname,
+                        role = debugUser.role,
+                    )
+                )
+            }
+
     private fun saveRefreshToken(member: Member, token: String) {
         val expiredAt = LocalDateTime.now()
             .plusSeconds(jwtService.refreshTokenExpirationSeconds)
         refreshTokenRepository.save(
-            RefreshToken(member = member, token = token, expiredAt = expiredAt)
+            RefreshToken(member = member, token = hashToken(token), expiredAt = expiredAt)
         )
+    }
+
+    /** 리프레시 토큰을 SHA-256으로 해싱하여 DB에 평문이 저장되지 않도록 합니다. */
+    private fun hashToken(token: String): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+        val hash = digest.digest(token.toByteArray(Charsets.UTF_8))
+        return Base64.getEncoder().encodeToString(hash)
     }
 
     private fun buildLoginResponse(member: Member, accessToken: String, refreshToken: String) =

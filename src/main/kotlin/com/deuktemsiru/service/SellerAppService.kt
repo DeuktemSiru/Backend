@@ -42,9 +42,9 @@ class SellerAppService(
     fun getStore(sellerId: Long): SellerStoreResponse {
         val store = sellerStore(sellerId)
         val today = LocalDate.now()
-        val todayProductCount = productRepository.findByStoreAndAvailableDateAndStatus(
+        val todayProductCount = productRepository.countByStoreAndAvailableDateAndStatus(
             store, today, ProductStatus.AVAILABLE
-        ).size
+        )
         val pendingOrderCount = orderRepository.findByStoreOrderByCreatedAtDesc(store)
             .count { it.status == OrderStatus.PENDING }
         return SellerStoreResponse(
@@ -76,8 +76,8 @@ class SellerAppService(
             .filter { it.availableDate == targetDate }
             .sortedByDescending { it.createdAt }
         if (status != null) {
-            val statusEnum = runCatching { ProductStatus.valueOf(status.uppercase()) }.getOrNull()
-            if (statusEnum != null) products = products.filter { it.status == statusEnum }
+            val statusEnum = parseProductStatus(status)
+            products = products.filter { it.status == statusEnum }
         }
         return products.map { SellerSaleItemResponse.from(it) }
     }
@@ -99,6 +99,10 @@ class SellerAppService(
                 .also { mi -> require(mi.store.storeId == store.storeId) { "내 매장의 메뉴만 등록할 수 있습니다." } }
         }
 
+        val pickupStart = parsePickupTime(req.pickupStart, "픽업 시작 시간")
+        val pickupEnd = parsePickupTime(req.pickupEnd, "픽업 종료 시간")
+        require(pickupEnd.isAfter(pickupStart)) { "픽업 종료 시간은 시작 시간보다 늦어야 합니다." }
+
         return productRepository.save(
             Product(
                 store = store,
@@ -112,9 +116,9 @@ class SellerAppService(
                 quantityRemaining = req.quantityTotal,
                 allergenInfo = req.allergenInfo ?: menuItem?.allergenInfo,
                 madeAt = req.madeAt,
-                pickupStart = LocalTime.parse(req.pickupStart),
-                pickupEnd = LocalTime.parse(req.pickupEnd),
-                availableDate = LocalDate.parse(req.availableDate),
+                pickupStart = pickupStart,
+                pickupEnd = pickupEnd,
+                availableDate = parseAvailableDate(req.availableDate),
             )
         )
     }
@@ -148,12 +152,33 @@ class SellerAppService(
     }
 
     @Transactional
+    fun updateProduct(sellerId: Long, productId: Long, req: UpdateSaleItemRequest): SellerSaleItemResponse {
+        val store = sellerStore(sellerId)
+        val product = productRepository.findById(productId)
+            .orElseThrow { NoSuchElementException("판매 상품을 찾을 수 없습니다.") }
+        require(product.store.storeId == store.storeId) { "접근 권한이 없습니다." }
+
+        req.discountPrice?.let {
+            require(it > 0) { "할인가는 1원 이상이어야 합니다." }
+            require(it < product.originalPrice) { "할인가는 정가보다 낮아야 합니다." }
+            product.discountPrice = it
+        }
+        req.quantityRemaining?.let {
+            require(it >= 0) { "잔여 수량은 0개 이상이어야 합니다." }
+            require(it <= product.quantityTotal) { "잔여 수량은 총 수량보다 많을 수 없습니다." }
+            product.quantityRemaining = it
+            product.status = if (it == 0) ProductStatus.SOLD_OUT else ProductStatus.AVAILABLE
+        }
+        return SellerSaleItemResponse.from(product)
+    }
+
+    @Transactional
     fun deleteProduct(sellerId: Long, productId: Long) {
         val store = sellerStore(sellerId)
         val product = productRepository.findById(productId)
             .orElseThrow { NoSuchElementException("판매 상품을 찾을 수 없습니다.") }
         require(product.store.storeId == store.storeId) { "접근 권한이 없습니다." }
-        productRepository.delete(product)
+        product.status = ProductStatus.EXPIRED
     }
 
     // ── 메뉴 마스터 관리 ──────────────────────────────────────────────────────
@@ -224,18 +249,22 @@ class SellerAppService(
 
     @Transactional
     fun registerBusinessInfo(sellerId: Long, businessNumber: String): BusinessInfo {
-        if (businessInfoRepository.existsByBusinessNumber(businessNumber)) {
-            throw IllegalStateException("이미 등록된 사업자 번호입니다.")
-        }
         val member = memberService.findMember(sellerId)
-        val businessInfo = BusinessInfo(
-            member = member,
-            businessName = businessNumber,   // 실제 인증 API 연동 전 임시값
-            businessNumber = businessNumber,
-            isVerified = true,               // 실제 인증 API 연동 전 임시 승인
-            isSiruVerified = false,
+        val existing = businessInfoRepository.findByMember(member).orElse(null)
+        if (existing != null) {
+            existing.businessNumber = businessNumber
+            existing.isVerified = false
+            existing.verifiedAt = null
+            return businessInfoRepository.save(existing)
+        }
+        return businessInfoRepository.save(
+            BusinessInfo(
+                member = member,
+                businessName = businessNumber,
+                businessNumber = businessNumber,
+                isVerified = false,
+            )
         )
-        return businessInfoRepository.save(businessInfo)
     }
 
     // ── 알림 발송 ─────────────────────────────────────────────────────────────
@@ -271,8 +300,7 @@ class SellerAppService(
 
     fun getSellerNotifications(sellerId: Long): List<SellerNotificationResponse> {
         val store = sellerStore(sellerId)
-        return notificationRepository.findAll()
-            .filter { it.relatedStoreId == store.storeId && it.title == store.name }
+        return notificationRepository.findByRelatedStoreIdAndTitleOrderByCreatedAtDesc(store.storeId, store.name)
             .groupBy { it.body to it.createdAt.toString().take(16) }
             .map { (_, notifications) ->
                 val first = notifications.maxBy { it.createdAt }
@@ -294,13 +322,22 @@ class SellerAppService(
         val orderMembers = orderRepository.findByStoreOrderByCreatedAtDesc(store)
             .map { it.consumer }
         val base = when (req.targetType.uppercase()) {
+            "REGULAR" -> (wishlistedMembers + orderMembers)
             "NEARBY" -> (wishlistedMembers + orderMembers)
-            else -> (wishlistedMembers + orderMembers)
+            else -> throw IllegalArgumentException("지원하지 않는 알림 대상: ${req.targetType}")
         }
         return base
             .filter { it.status }
             .distinctBy { it.memberId }
     }
+
+    private fun parsePickupTime(value: String, fieldName: String): LocalTime =
+        runCatching { LocalTime.parse(value) }
+            .getOrElse { throw IllegalArgumentException("$fieldName 형식은 HH:mm 이어야 합니다.") }
+
+    private fun parseAvailableDate(value: String): LocalDate =
+        runCatching { LocalDate.parse(value) }
+            .getOrElse { throw IllegalArgumentException("판매일 형식은 yyyy-MM-dd 이어야 합니다.") }
 
     private fun sellerStore(sellerId: Long) =
         storeRepository.findByOwner(memberService.findMember(sellerId))

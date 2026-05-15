@@ -23,6 +23,11 @@ data class UpdateSaleStatusRequest(
     val status: String,
 )
 
+data class UpdateSaleItemRequest(
+    val discountPrice: Int? = null,
+    val quantityRemaining: Int? = null,
+)
+
 // ── 판매자 상품 목록 응답 (GET /sellers/products) ─────────────────────────────
 data class SellerSaleItemResponse(
     val productId: Long,

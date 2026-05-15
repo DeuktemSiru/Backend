@@ -2,6 +2,7 @@ package com.deuktemsiru.config
 
 import com.deuktemsiru.common.ApiResponse
 import com.deuktemsiru.common.UnauthorizedException
+import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
 import org.springframework.web.bind.annotation.ExceptionHandler
 import org.springframework.web.bind.annotation.ResponseStatus
@@ -9,6 +10,8 @@ import org.springframework.web.bind.annotation.RestControllerAdvice
 
 @RestControllerAdvice
 class GlobalExceptionHandler {
+
+    private val log = LoggerFactory.getLogger(GlobalExceptionHandler::class.java)
 
     @ExceptionHandler(NoSuchElementException::class)
     @ResponseStatus(HttpStatus.NOT_FOUND)
@@ -32,6 +35,8 @@ class GlobalExceptionHandler {
 
     @ExceptionHandler(Exception::class)
     @ResponseStatus(HttpStatus.INTERNAL_SERVER_ERROR)
-    fun handleServerError(e: Exception) =
-        ApiResponse.error("서버 오류가 발생했습니다.", 500)
+    fun handleServerError(e: Exception): ApiResponse<Nothing> {
+        log.error("Unhandled exception", e)
+        return ApiResponse.error("서버 오류가 발생했습니다.", 500)
+    }
 }

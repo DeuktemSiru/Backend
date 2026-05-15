@@ -2,8 +2,11 @@ package com.deuktemsiru.security
 
 import com.deuktemsiru.entity.Member
 import com.deuktemsiru.entity.MemberRole
+import jakarta.annotation.PostConstruct
+import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Service
+import java.security.MessageDigest
 import java.nio.charset.StandardCharsets
 import java.time.Instant
 import java.util.Base64
@@ -16,6 +19,17 @@ class JwtService(
     @Value("\${app.jwt.access-token-expiration-seconds:1800}") val accessTokenExpirationSeconds: Long,
     @Value("\${app.jwt.refresh-token-expiration-seconds:1209600}") val refreshTokenExpirationSeconds: Long,
 ) {
+
+    private val log = LoggerFactory.getLogger(JwtService::class.java)
+
+    @PostConstruct
+    fun validateSecret() {
+        val devDefault = "deuktemsiru-dev-secret-key-must-be-changed-in-production"
+        if (secret == devDefault) {
+            log.warn("⚠️  JWT secret이 기본 개발용 값입니다. 운영 환경에서는 APP_JWT_SECRET 환경변수를 반드시 교체하세요!")
+        }
+        require(secret.length >= 32) { "JWT secret은 최소 32자 이상이어야 합니다. (현재: ${secret.length}자)" }
+    }
     private val encoder = Base64.getUrlEncoder().withoutPadding()
     private val decoder = Base64.getUrlDecoder()
 
@@ -66,9 +80,11 @@ class JwtService(
         if (parts.size != 3) return null
 
         val unsigned = "${parts[0]}.${parts[1]}"
-        if (sign(unsigned) != parts[2]) return null
+        if (!MessageDigest.isEqual(sign(unsigned).toByteArray(), parts[2].toByteArray())) return null
 
-        val payload = String(decoder.decode(parts[1]), StandardCharsets.UTF_8)
+        val payload = runCatching {
+            String(decoder.decode(parts[1]), StandardCharsets.UTF_8)
+        }.getOrNull() ?: return null
         val expiresAt = extractNumber(payload, "exp") ?: return null
         if (Instant.now().epochSecond >= expiresAt) return null
 

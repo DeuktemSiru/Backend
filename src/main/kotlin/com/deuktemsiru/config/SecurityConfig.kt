@@ -14,7 +14,7 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 @EnableWebSecurity
 class SecurityConfig(
     private val jwtAuthenticationFilter: JwtAuthenticationFilter,
-    @Value("\${app.security.dev-endpoints-enabled:true}")
+    @Value("\${app.security.dev-endpoints-enabled:false}")
     private val devEndpointsEnabled: Boolean,
 ) {
 

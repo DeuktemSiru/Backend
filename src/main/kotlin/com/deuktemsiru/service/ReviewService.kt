@@ -54,7 +54,7 @@ class ReviewService(
         require(order.status == OrderStatus.PICKED_UP) { "픽업 완료된 주문에만 리뷰를 작성할 수 있습니다." }
         require(!reviewRepository.existsByConsumerAndOrder(consumer, order)) { "이미 작성한 리뷰가 있습니다." }
 
-        val review = reviewRepository.save(
+        reviewRepository.save(
             Review(
                 consumer = consumer,
                 store = store,
@@ -65,11 +65,7 @@ class ReviewService(
         )
 
         // 가게 평점 업데이트
-        val allReviews = reviewRepository.findByStoreAndIsDeletedFalseOrderByCreatedAtDesc(
-            store, PageRequest.of(0, Int.MAX_VALUE)
-        )
-        store.reviewCount = allReviews.size
-        store.ratingAvg = if (allReviews.isNotEmpty()) allReviews.map { it.rating }.average() else 0.0
+        updateStoreRating(store)
     }
 
     fun getStoreReviews(storeId: Long, page: Int, size: Int): StoreReviewListResponse {
@@ -101,11 +97,14 @@ class ReviewService(
         review.isDeleted = true
 
         // 가게 평점 재계산
-        val store = review.store
-        val remaining = reviewRepository.findByStoreAndIsDeletedFalseOrderByCreatedAtDesc(
-            store, PageRequest.of(0, Int.MAX_VALUE)
-        )
-        store.reviewCount = remaining.size
-        store.ratingAvg = if (remaining.isNotEmpty()) remaining.map { it.rating }.average() else 0.0
+        updateStoreRating(review.store)
+    }
+
+    // ── 내부 유틸 ────────────────────────────────────────────────────────────
+
+    /** 가게의 리뷰 수와 평균 평점을 DB에서 직접 집계하여 Store 엔티티에 반영합니다. */
+    private fun updateStoreRating(store: com.deuktemsiru.entity.Store) {
+        store.reviewCount = reviewRepository.countByStoreAndIsDeletedFalse(store).toInt()
+        store.ratingAvg = reviewRepository.findAverageRatingByStore(store) ?: 0.0
     }
 }

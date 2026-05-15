@@ -33,7 +33,7 @@ class AuthController(
     private val authService: AuthService,
     private val memberService: MemberService,
     private val authContext: AuthContext,
-    @Value("\${app.security.dev-endpoints-enabled:true}")
+    @Value("\${app.security.dev-endpoints-enabled:false}")
     private val devEndpointsEnabled: Boolean,
 ) {
 

@@ -63,6 +63,19 @@ class CartService(
     }
 
     @Transactional
+    fun updateQuantity(memberId: Long, cartItemId: Long, quantity: Int): CartItem {
+        require(quantity > 0) { "장바구니 수량은 1개 이상이어야 합니다." }
+        val member = memberService.findMember(memberId)
+        val cartItem = cartItemRepository.findById(cartItemId)
+            .orElseThrow { NoSuchElementException("장바구니 상품을 찾을 수 없습니다.") }
+        require(cartItem.member.memberId == member.memberId) { "접근 권한이 없습니다." }
+        require(cartItem.product.status == ProductStatus.AVAILABLE) { "${cartItem.product.name}은(는) 구매 불가 상태입니다." }
+        require(cartItem.product.quantityRemaining >= quantity) { "${cartItem.product.name} 재고가 부족합니다." }
+        cartItem.quantity = quantity
+        return toResponse(cartItem)
+    }
+
+    @Transactional
     fun clearCart(memberId: Long) {
         val member = memberService.findMember(memberId)
         cartItemRepository.deleteByMember(member)
@@ -77,6 +90,7 @@ class CartService(
             productName = product.name,
             storeId = store.storeId,
             storeName = store.name,
+            originalPrice = product.originalPrice,
             discountPrice = product.discountPrice,
             quantity = cartItem.quantity,
             imageUrl = product.thumbnailUrl,

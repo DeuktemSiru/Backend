@@ -127,22 +127,24 @@ class StoreService(
             storeRepository.findAll()
 
         val today = LocalDate.now()
+        val availableCounts = availableProductCounts(allStores, today)
+        val hasLocation = latitude != null && longitude != null
         val filtered = if (keyword != null)
             allStores.filter { it.name.contains(keyword, ignoreCase = true) }
         else
             allStores
 
         val withDistance = filtered.map { store -> store to distanceMeters(latitude, longitude, store.latitude, store.longitude) }
-            .filter { (_, distance) -> radius == null || distance <= radius }
+            .filter { (_, distance) -> !hasLocation || radius == null || distance <= radius }
         val sorted = when (sort.lowercase()) {
             "rating" -> withDistance.sortedWith(compareByDescending<Pair<Store, Int>> { it.first.ratingAvg }.thenBy { it.second })
             "products", "available" -> withDistance.sortedByDescending {
-                productRepository.findByStoreAndAvailableDateAndStatus(it.first, today, ProductStatus.AVAILABLE).size
+                availableCounts[it.first.storeId] ?: 0
             }
-            else -> withDistance.sortedBy { it.second }
+            else -> if (hasLocation) withDistance.sortedBy { it.second } else withDistance.sortedBy { it.first.name }
         }
         return sorted.map { (store, distance) ->
-            val count = productRepository.findByStoreAndAvailableDateAndStatus(store, today, ProductStatus.AVAILABLE).size
+            val count = availableCounts[store.storeId] ?: 0
             StoreListItemResponse.from(store, availableProductCount = count, distanceM = distance)
         }.pageSlice(page, size)
     }
@@ -166,7 +168,7 @@ class StoreService(
             storeRepository.findAll()
         val today = LocalDate.now()
         return stores.map { store ->
-            val count = productRepository.findByStoreAndAvailableDateAndStatus(store, today, ProductStatus.AVAILABLE).size
+            val count = availableProductCount(store, today)
             StoreMarkerResponse.from(store, availableProductCount = count)
         }
     }
@@ -188,16 +190,23 @@ class StoreService(
         else
             storeRepository.findAll()
         val today = LocalDate.now()
-        val products = stores.flatMap { store ->
-            val distance = distanceMeters(latitude, longitude, store.latitude, store.longitude)
-            if (radius != null && distance > radius) return@flatMap emptyList()
-            productRepository.findByStoreAndAvailableDateAndStatus(store, today, ProductStatus.AVAILABLE)
-                .map { ProductListItemResponse.from(it, distanceM = distance) }
+        val hasLocation = latitude != null && longitude != null
+        val storeDistances = stores.associate { store ->
+            store.storeId to distanceMeters(latitude, longitude, store.latitude, store.longitude)
+        }
+        val nearbyStores = stores.filter { store ->
+            !hasLocation || radius == null || (storeDistances[store.storeId] ?: 0) <= radius
+        }
+        val products = if (nearbyStores.isEmpty()) {
+            emptyList()
+        } else {
+            productRepository.findByStoreInAndAvailableDateAndStatus(nearbyStores, today, ProductStatus.AVAILABLE)
+                .map { ProductListItemResponse.from(it, distanceM = storeDistances[it.store.storeId] ?: 0) }
         }
         val sorted = when (sort.lowercase()) {
             "discount" -> products.sortedBy { it.discountPrice }
             "quantity" -> products.sortedByDescending { it.quantityRemaining }
-            else -> products.sortedBy { it.distanceM }
+            else -> if (hasLocation) products.sortedBy { it.distanceM } else products.sortedBy { it.name }
         }
         return sorted.pageSlice(page, size)
     }
@@ -217,7 +226,7 @@ class StoreService(
         val today = LocalDate.now()
         return wishlistRepository.findByMember(member).map { w ->
             val store = w.store
-            val count = productRepository.findByStoreAndAvailableDateAndStatus(store, today, ProductStatus.AVAILABLE).size
+            val count = availableProductCount(store, today)
             WishlistItemResponse(
                 wishlistId = w.wishlistId,
                 storeId = store.storeId,
@@ -252,6 +261,16 @@ class StoreService(
             storeCategoryRepository.save(StoreCategory(store = store, category = categoryType))
         }
         return store
+    }
+
+    private fun availableProductCount(store: Store, date: LocalDate): Int =
+        productRepository.countByStoreAndAvailableDateAndStatus(store, date, ProductStatus.AVAILABLE)
+
+    private fun availableProductCounts(stores: List<Store>, date: LocalDate): Map<Long, Int> {
+        val storeIds = stores.map { it.storeId }
+        if (storeIds.isEmpty()) return emptyMap()
+        return productRepository.countAvailableProductsByStoreIds(storeIds, date)
+            .associate { it.storeId to it.productCount.toInt() }
     }
 
     private fun distanceMeters(
