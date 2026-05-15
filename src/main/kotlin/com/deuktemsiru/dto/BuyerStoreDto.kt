@@ -1,113 +1,199 @@
 package com.deuktemsiru.dto
 
 import com.deuktemsiru.entity.Product
-import com.deuktemsiru.entity.ProductStatus
 import com.deuktemsiru.entity.Store
-import io.swagger.v3.oas.annotations.media.Schema
 
-/**
- * 구매자 앱에서 기대하는 메뉴(상품) 응답 형식.
- * MenuItem(정적 메뉴 정의)이 아닌 Product(오늘의 마감 할인 상품) 기반.
- */
-@Schema(description = "구매자 앱 메뉴 응답")
-data class BuyerMenuResponse(
-    @field:Schema(description = "상품 ID", example = "1")
-    val id: Long,
-    @field:Schema(description = "상품명", example = "크루아상")
+// ── 가게 목록 아이템 (GET /stores) ───────────────────────────────────────────
+data class StoreListItemResponse(
+    val storeId: Long,
     val name: String,
-    @field:Schema(description = "카테고리 이모지", example = "🥐")
-    val emoji: String,
-    @field:Schema(description = "정상가", example = "5000")
-    val originalPrice: Int,
-    @field:Schema(description = "할인가", example = "3500")
-    val discountedPrice: Int,
-    @field:Schema(description = "할인율(%)", example = "30")
-    val discountRate: Int,
-    @field:Schema(description = "남은 수량", example = "4")
-    val remainingItems: Int,
-    @field:Schema(description = "품절 여부", example = "false")
-    val isSoldOut: Boolean,
-    @field:Schema(description = "픽업 가능 시간대", example = "18:00-20:00")
-    val pickupTimeSlot: String,
-) {
-    companion object {
-        fun from(product: Product, emoji: String): BuyerMenuResponse {
-            val discountRate = if (product.originalPrice > 0)
-                ((1.0 - product.discountPrice.toDouble() / product.originalPrice) * 100).toInt()
-            else 0
-            return BuyerMenuResponse(
-                id = product.productId,
-                name = product.name,
-                emoji = emoji,
-                originalPrice = product.originalPrice,
-                discountedPrice = product.discountPrice,
-                discountRate = discountRate,
-                remainingItems = product.quantityRemaining,
-                isSoldOut = product.status == ProductStatus.SOLD_OUT || product.quantityRemaining <= 0,
-                pickupTimeSlot = "${product.pickupStart}-${product.pickupEnd}",
-            )
-        }
-    }
-}
-
-/**
- * 구매자 앱에서 기대하는 가게 응답 형식.
- */
-@Schema(description = "구매자 앱 가게 응답")
-data class BuyerStoreResponse(
-    @field:Schema(description = "가게 ID", example = "1")
-    val id: Long,
-    @field:Schema(description = "가게명", example = "시루 베이커리")
-    val name: String,
-    @field:Schema(description = "대표 카테고리", allowableValues = ["BAKERY", "RESTAURANT", "CAFE", "GROCERY", "OTHER"], example = "BAKERY")
+    val thumbnailUrl: String?,
+    val distanceM: Int,          // 위치 기반 미구현 시 0
     val category: String,
-    @field:Schema(description = "카테고리 이모지", example = "🥐")
-    val emoji: String,
-    @field:Schema(description = "평점", example = "4.7")
-    val rating: Float,
-    @field:Schema(description = "주소", example = "서울시 강남구 테헤란로 1")
-    val address: String,
-    @field:Schema(description = "전화번호", example = "02-1234-5678")
-    val phone: String,
-    @field:Schema(description = "위도", example = "37.5665")
-    val latitude: Double,
-    @field:Schema(description = "경도", example = "126.9780")
-    val longitude: Double,
-    @field:Schema(description = "영업 종료 또는 픽업 종료 시간", example = "21:00")
-    val closingTime: String,
-    @field:Schema(description = "찜 여부", example = "true")
-    val isWishlisted: Boolean,
-    @field:Schema(description = "판매 중인 메뉴 목록")
-    val menus: List<BuyerMenuResponse>,
+    val ratingAvg: Double,
+    val reviewCount: Int,
+    val availableProductCount: Int,
 ) {
     companion object {
-        fun from(store: Store, products: List<Product>, isWishlisted: Boolean): BuyerStoreResponse {
-            val category = store.categories.firstOrNull()?.category?.name ?: "OTHER"
-            val emoji = categoryEmoji(category)
-            val menus = products.map { BuyerMenuResponse.from(it, emoji) }
-            val closingTime = products.maxOfOrNull { it.pickupEnd }?.toString() ?: "21:00"
-            return BuyerStoreResponse(
-                id = store.storeId,
-                name = store.name,
-                category = category,
-                emoji = emoji,
-                rating = store.ratingAvg.toFloat(),
-                address = store.address,
-                phone = store.phone ?: "",
-                latitude = store.latitude,
-                longitude = store.longitude,
-                closingTime = closingTime,
-                isWishlisted = isWishlisted,
-                menus = menus,
-            )
-        }
-
-        private fun categoryEmoji(category: String) = when (category) {
-            "BAKERY"     -> "🥐"
-            "CAFE"       -> "☕"
-            "RESTAURANT" -> "🍱"
-            "GROCERY"    -> "🥦"
-            else         -> "🍽️"
-        }
+        fun from(store: Store, availableProductCount: Int, distanceM: Int = 0) = StoreListItemResponse(
+            storeId = store.storeId,
+            name = store.name,
+            thumbnailUrl = store.thumbnailUrl,
+            distanceM = distanceM,
+            category = store.categories.firstOrNull()?.category?.name ?: "OTHER",
+            ratingAvg = store.ratingAvg,
+            reviewCount = store.reviewCount,
+            availableProductCount = availableProductCount,
+        )
     }
 }
+
+// ── 가게 상세 내 상품 항목 (GET /stores/{storeId} > products[]) ─────────────
+data class StoreProductItem(
+    val productId: Long,
+    val name: String,
+    val discountPrice: Int,
+    val quantityRemaining: Int,
+    val pickupEnd: String,
+    val status: String,
+) {
+    companion object {
+        fun from(product: Product) = StoreProductItem(
+            productId = product.productId,
+            name = product.name,
+            discountPrice = product.discountPrice,
+            quantityRemaining = product.quantityRemaining,
+            pickupEnd = product.pickupEnd.toString(),
+            status = product.status.name,
+        )
+    }
+}
+
+// ── 가게 상세 응답 (GET /stores/{storeId}) ───────────────────────────────────
+data class StoreDetailResponse(
+    val storeId: Long,
+    val name: String,
+    val description: String?,
+    val address: String,
+    val latitude: Double,
+    val longitude: Double,
+    val phone: String?,
+    val thumbnailUrl: String?,
+    val images: List<String>,
+    val categories: List<String>,
+    val ratingAvg: Double,
+    val reviewCount: Int,
+    val products: List<StoreProductItem>,
+) {
+    companion object {
+        fun from(store: Store, products: List<Product>) = StoreDetailResponse(
+            storeId = store.storeId,
+            name = store.name,
+            description = store.description,
+            address = store.address,
+            latitude = store.latitude,
+            longitude = store.longitude,
+            phone = store.phone,
+            thumbnailUrl = store.thumbnailUrl,
+            images = store.images.sortedBy { it.displayOrder }.map { it.imageUrl },
+            categories = store.categories.map { it.category.name },
+            ratingAvg = store.ratingAvg,
+            reviewCount = store.reviewCount,
+            products = products.map { StoreProductItem.from(it) },
+        )
+    }
+}
+
+// ── 상품 목록 아이템 (GET /products) ─────────────────────────────────────────
+data class ProductListItemResponse(
+    val productId: Long,
+    val name: String,
+    val thumbnailUrl: String?,
+    val originalPrice: Int,
+    val discountPrice: Int,
+    val quantityRemaining: Int,
+    val pickupEnd: String,
+    val status: String,
+    val storeName: String,
+    val distanceM: Int,          // 위치 기반 미구현 시 0
+) {
+    companion object {
+        fun from(product: Product, distanceM: Int = 0) = ProductListItemResponse(
+            productId = product.productId,
+            name = product.name,
+            thumbnailUrl = product.thumbnailUrl,
+            originalPrice = product.originalPrice,
+            discountPrice = product.discountPrice,
+            quantityRemaining = product.quantityRemaining,
+            pickupEnd = product.pickupEnd.toString(),
+            status = product.status.name,
+            storeName = product.store.name,
+            distanceM = distanceM,
+        )
+    }
+}
+
+// ── 상품 상세 내 가게 정보 ─────────────────────────────────────────────────
+data class ProductStoreInfo(
+    val storeId: Long,
+    val name: String,
+    val address: String,
+)
+
+// ── 상품 상세 응답 (GET /products/{productId}) ───────────────────────────────
+data class ProductDetailResponse(
+    val productId: Long,
+    val name: String,
+    val description: String?,
+    val thumbnailUrl: String?,
+    val images: List<String>,
+    val originalPrice: Int,
+    val discountPrice: Int,
+    val quantityTotal: Int,
+    val quantityRemaining: Int,
+    val allergenInfo: String?,
+    val madeAt: String?,
+    val pickupStart: String,
+    val pickupEnd: String,
+    val availableDate: String,
+    val status: String,
+    val carbonSavedKg: Double,
+    val store: ProductStoreInfo,
+) {
+    companion object {
+        fun from(product: Product) = ProductDetailResponse(
+            productId = product.productId,
+            name = product.name,
+            description = product.description,
+            thumbnailUrl = product.thumbnailUrl,
+            images = product.images.sortedBy { it.displayOrder }.map { it.imageUrl },
+            originalPrice = product.originalPrice,
+            discountPrice = product.discountPrice,
+            quantityTotal = product.quantityTotal,
+            quantityRemaining = product.quantityRemaining,
+            allergenInfo = product.allergenInfo,
+            madeAt = product.madeAt,
+            pickupStart = product.pickupStart.toString(),
+            pickupEnd = product.pickupEnd.toString(),
+            availableDate = product.availableDate.toString(),
+            status = product.status.name,
+            carbonSavedKg = product.carbonSavedKg,
+            store = ProductStoreInfo(
+                storeId = product.store.storeId,
+                name = product.store.name,
+                address = product.store.address,
+            ),
+        )
+    }
+}
+
+// ── 지도 마커 (GET /stores/map) ───────────────────────────────────────────────
+data class StoreMarkerResponse(
+    val storeId: Long,
+    val name: String,
+    val latitude: Double,
+    val longitude: Double,
+    val availableProductCount: Int,
+    val category: String,
+) {
+    companion object {
+        fun from(store: Store, availableProductCount: Int) = StoreMarkerResponse(
+            storeId = store.storeId,
+            name = store.name,
+            latitude = store.latitude,
+            longitude = store.longitude,
+            availableProductCount = availableProductCount,
+            category = store.categories.firstOrNull()?.category?.name ?: "OTHER",
+        )
+    }
+}
+
+// ── 찜 목록 아이템 (GET /wishlist) ───────────────────────────────────────────
+data class WishlistItemResponse(
+    val wishlistId: Long,
+    val storeId: Long,
+    val name: String,
+    val thumbnailUrl: String?,
+    val ratingAvg: Double,
+    val availableProductCount: Int,
+)

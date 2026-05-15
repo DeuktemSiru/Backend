@@ -1,7 +1,6 @@
 package com.deuktemsiru.entity
 
 import jakarta.persistence.*
-import io.swagger.v3.oas.annotations.media.Schema
 import org.hibernate.annotations.CreationTimestamp
 import java.time.LocalDateTime
 
@@ -42,7 +41,6 @@ class Notification(
     val createdAt: LocalDateTime = LocalDateTime.now(),
 )
 
-@Schema(description = "알림 유형", allowableValues = ["NEW_PRODUCT", "PICKUP_REMINDER", "ORDER_CONFIRMED", "ORDER_CANCELLED", "EVENT"])
 enum class NotificationType {
     NEW_PRODUCT, PICKUP_REMINDER, ORDER_CONFIRMED, ORDER_CANCELLED, EVENT
 }

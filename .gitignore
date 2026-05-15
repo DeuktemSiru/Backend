@@ -17,18 +17,22 @@ out/
 HELP.md
 
 # Secrets & environment
-local.properties
 application-local.properties
 application-local.yml
 application-prod.properties
 application-prod.yml
-!src/main/resources/application-prod.properties
 *.env
 .env*
 
 # OS
 .DS_Store
 Thumbs.db
+
+# Local SDK path (machine-specific)
+local.properties
+
+# Claude Code project config
+.claude/
 
 # Logs
 *.log
