@@ -9,6 +9,7 @@ import java.util.Optional
 
 interface FcmTokenRepository : JpaRepository<FcmToken, Long> {
     fun findByToken(token: String): Optional<FcmToken>
+    fun findByMemberAndIsActiveTrue(member: Member): List<FcmToken>
 
     /** 특정 회원의 모든 FCM Token 비활성화 (로그아웃) */
     @Modifying

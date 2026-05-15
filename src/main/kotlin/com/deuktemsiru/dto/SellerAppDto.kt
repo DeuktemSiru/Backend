@@ -115,6 +115,8 @@ data class CreateStoreRequest(
 // ── 알림 발송 ─────────────────────────────────────────────────────────────────
 data class SendNotificationRequest(
     val message: String,
+    val targetType: String = "REGULAR",
+    val radiusKm: Int? = null,
 )
 
 data class SellerNotificationResponse(

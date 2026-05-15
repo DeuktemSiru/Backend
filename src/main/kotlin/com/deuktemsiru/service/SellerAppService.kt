@@ -9,12 +9,14 @@ import com.deuktemsiru.entity.OrderStatus
 import com.deuktemsiru.entity.Product
 import com.deuktemsiru.entity.ProductImage
 import com.deuktemsiru.entity.ProductStatus
+import com.deuktemsiru.entity.Store
 import com.deuktemsiru.repository.BusinessInfoRepository
 import com.deuktemsiru.repository.MenuItemRepository
 import com.deuktemsiru.repository.NotificationRepository
 import com.deuktemsiru.repository.OrderRepository
 import com.deuktemsiru.repository.ProductRepository
 import com.deuktemsiru.repository.StoreRepository
+import com.deuktemsiru.repository.WishlistRepository
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.LocalDate
@@ -29,8 +31,10 @@ class SellerAppService(
     private val orderRepository: OrderRepository,
     private val notificationRepository: NotificationRepository,
     private val businessInfoRepository: BusinessInfoRepository,
+    private val wishlistRepository: WishlistRepository,
     private val memberService: MemberService,
     private val menuImageStorageService: MenuImageStorageService,
+    private val fcmService: FcmService,
 ) {
 
     // ── 가게 조회/수정 ────────────────────────────────────────────────────────
@@ -240,23 +244,62 @@ class SellerAppService(
     fun sendNotification(sellerId: Long, req: SendNotificationRequest): SellerNotificationResponse {
         require(req.message.isNotBlank()) { "알림 내용을 입력해 주세요." }
         val store = sellerStore(sellerId)
-        val sent = notificationRepository.save(
-            Notification(
-                member = store.owner,
-                relatedStoreId = store.storeId,
-                type = NotificationType.EVENT,
-                title = store.name,
-                body = req.message,
-            )
-        )
+        val recipients = notificationRecipients(store, req)
+        val saved = recipients.map { member ->
+            notificationRepository.save(
+                Notification(
+                    member = member,
+                    relatedStoreId = store.storeId,
+                    type = NotificationType.EVENT,
+                    title = store.name,
+                    body = req.message,
+                )
+            ).also {
+                fcmService.sendToMember(member.memberId, it.title, it.body)
+            }
+        }
+        val sent = saved.firstOrNull()
         return SellerNotificationResponse(
-            id = sent.notificationId,
+            id = sent?.notificationId ?: 0,
             storeId = store.storeId,
             storeName = store.name,
-            message = sent.body,
-            sentAt = sent.createdAt.toString(),
-            recipientCount = 1,
+            message = req.message,
+            sentAt = (sent?.createdAt ?: java.time.LocalDateTime.now()).toString(),
+            recipientCount = recipients.size,
         )
+    }
+
+    fun getSellerNotifications(sellerId: Long): List<SellerNotificationResponse> {
+        val store = sellerStore(sellerId)
+        return notificationRepository.findAll()
+            .filter { it.relatedStoreId == store.storeId && it.title == store.name }
+            .groupBy { it.body to it.createdAt.toString().take(16) }
+            .map { (_, notifications) ->
+                val first = notifications.maxBy { it.createdAt }
+                SellerNotificationResponse(
+                    id = first.notificationId,
+                    storeId = store.storeId,
+                    storeName = store.name,
+                    message = first.body,
+                    sentAt = first.createdAt.toString(),
+                    recipientCount = notifications.size,
+                )
+            }
+            .sortedByDescending { it.sentAt }
+    }
+
+    private fun notificationRecipients(store: Store, req: SendNotificationRequest): List<com.deuktemsiru.entity.Member> {
+        val wishlistedMembers = wishlistRepository.findByStore(store)
+            .map { it.member }
+        val orderMembers = orderRepository.findByStoreOrderByCreatedAtDesc(store)
+            .map { it.consumer }
+        val base = when (req.targetType.uppercase()) {
+            "NEARBY" -> (wishlistedMembers + orderMembers)
+            else -> (wishlistedMembers + orderMembers)
+        }
+        return base
+            .filter { it.status }
+            .distinctBy { it.memberId }
     }
 
     private fun sellerStore(sellerId: Long) =

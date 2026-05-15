@@ -68,6 +68,8 @@ data class MemberResponse(
     val gender: MemberGender?,
     val birth: LocalDate?,
     val status: Int,          // 1=활성, 0=비활성 (ERD tinyint 기준)
+    val isSiruLinked: Boolean,
+    val siruBalance: Int,
     val createdAt: LocalDateTime,
 ) {
     companion object {
@@ -82,6 +84,8 @@ data class MemberResponse(
             gender = member.gender,
             birth = member.birth,
             status = if (member.status) 1 else 0,
+            isSiruLinked = member.isSiruLinked,
+            siruBalance = member.siruBalance,
             createdAt = member.createdAt,
         )
     }

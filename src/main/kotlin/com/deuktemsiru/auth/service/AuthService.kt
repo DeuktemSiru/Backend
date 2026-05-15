@@ -113,6 +113,24 @@ class AuthService(
         return buildLoginResponse(member, accessToken, refreshToken)
     }
 
+    @Transactional
+    fun debugLogin(role: MemberRole, email: String?): LoginResponse {
+        val normalizedEmail = email?.trim()?.takeIf { it.isNotBlank() }
+        if (role != MemberRole.SELLER || normalizedEmail == null) {
+            return debugLogin(role)
+        }
+
+        val seller = memberRepository.findByEmail(normalizedEmail)
+            .filter { it.role == MemberRole.SELLER }
+            .orElseThrow { NoSuchElementException("판매자 디버그 계정을 찾을 수 없습니다.") }
+
+        val accessToken = jwtService.createAccessToken(seller)
+        val refreshToken = jwtService.createRefreshToken(seller)
+        saveRefreshToken(seller, refreshToken)
+
+        return buildLoginResponse(seller, accessToken, refreshToken)
+    }
+
     /**
      * Refresh Token으로 Access Token 갱신.
      * DB 조회 + JWT 서명·만료·타입 이중 검증.

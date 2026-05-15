@@ -8,6 +8,7 @@ import java.util.Optional
 
 interface WishlistRepository : JpaRepository<Wishlist, Long> {
     fun findByMember(member: Member): List<Wishlist>
+    fun findByStore(store: Store): List<Wishlist>
     fun findByMemberAndStore(member: Member, store: Store): Optional<Wishlist>
     fun existsByMemberAndStore(member: Member, store: Store): Boolean
     fun countByStore(store: Store): Long

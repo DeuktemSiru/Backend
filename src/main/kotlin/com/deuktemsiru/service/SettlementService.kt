@@ -3,6 +3,9 @@ package com.deuktemsiru.service
 import com.deuktemsiru.controller.seller.SettlementItem
 import com.deuktemsiru.controller.seller.SettlementListResponse
 import com.deuktemsiru.entity.OrderStatus
+import com.deuktemsiru.entity.PaymentMethod
+import com.deuktemsiru.entity.Settlement
+import com.deuktemsiru.entity.SettlementStatus
 import com.deuktemsiru.repository.OrderRepository
 import com.deuktemsiru.repository.SettlementRepository
 import com.deuktemsiru.repository.StoreRepository
@@ -51,6 +54,42 @@ class SettlementService(
         val computedCurrentMonth = if (isCurrentMonth) currentMonthSettlement(store.storeId, targetStart, targetEnd) else null
 
         return SettlementListResponse((listOfNotNull(computedCurrentMonth) + saved))
+    }
+
+    @Transactional
+    fun requestWithdrawal(sellerId: Long, year: Int, month: Int): SettlementItem {
+        val seller = memberService.findMember(sellerId)
+        val store = storeRepository.findByOwner(seller)
+            .orElseThrow { NoSuchElementException("등록된 가게가 없습니다.") }
+        val start = LocalDate.of(year, month, 1)
+        val end = start.with(TemporalAdjusters.lastDayOfMonth())
+        val existing = settlementRepository.findByStoreOrderByPeriodStartDesc(store)
+            .firstOrNull { it.periodStart == start && it.periodEnd == end && it.status == SettlementStatus.PENDING }
+        val settlement = existing ?: run {
+            val computed = currentMonthSettlement(store.storeId, start, end)
+                ?: throw IllegalStateException("출금 신청 가능한 정산 금액이 없습니다.")
+            settlementRepository.save(
+                Settlement(
+                    store = store,
+                    paymentMethod = PaymentMethod.SIRU,
+                    periodStart = start,
+                    periodEnd = end,
+                    totalAmount = computed.totalSales,
+                    feeAmount = computed.platformFee,
+                    netAmount = computed.settlementAmount,
+                )
+            )
+        }
+        return SettlementItem(
+            settlementId = settlement.settlementId,
+            periodStart = settlement.periodStart.toString(),
+            periodEnd = settlement.periodEnd.toString(),
+            totalSales = settlement.totalAmount,
+            platformFee = settlement.feeAmount,
+            settlementAmount = settlement.netAmount,
+            status = settlement.status.name,
+            settledAt = settlement.settledAt?.toString(),
+        )
     }
 
     private fun currentMonthSettlement(storeId: Long, start: LocalDate, end: LocalDate): SettlementItem? {

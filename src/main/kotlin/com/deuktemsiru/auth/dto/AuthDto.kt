@@ -18,6 +18,8 @@ data class KakaoLoginRequest(
 data class DebugLoginRequest(
     /** 로그인 없이 진입할 디버그 사용자 유형 */
     val role: MemberRole,
+    /** 판매자 디버그 로그인 시 특정 샘플 계정을 선택하기 위한 이메일 */
+    val email: String? = null,
 )
 
 data class TokenRefreshRequest(

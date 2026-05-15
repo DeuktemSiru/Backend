@@ -7,7 +7,9 @@ import com.deuktemsiru.auth.dto.TokenRefreshRequest
 import com.deuktemsiru.auth.dto.TokenResponse
 import com.deuktemsiru.auth.service.AuthService
 import com.deuktemsiru.common.ApiResponse
+import com.deuktemsiru.dto.MemberResponse
 import com.deuktemsiru.security.AuthContext
+import com.deuktemsiru.service.MemberService
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.tags.Tag
 import org.springframework.beans.factory.annotation.Value
@@ -29,6 +31,7 @@ data class SiruLinkRequest(val siruAccessToken: String)
 @RequestMapping("/api/v1/auth")
 class AuthController(
     private val authService: AuthService,
+    private val memberService: MemberService,
     private val authContext: AuthContext,
     @Value("\${app.security.dev-endpoints-enabled:true}")
     private val devEndpointsEnabled: Boolean,
@@ -85,7 +88,7 @@ class AuthController(
                 "디버그 로그인은 비활성화되어 있습니다.",
             )
         }
-        return ApiResponse.success(authService.debugLogin(req.role), "디버그 로그인 성공")
+        return ApiResponse.success(authService.debugLogin(req.role, req.email), "디버그 로그인 성공")
     }
 
     /**
@@ -143,10 +146,9 @@ class AuthController(
     @PostMapping("/siru/link")
     fun linkSiru(
         @RequestBody req: SiruLinkRequest,
-    ): ApiResponse<Unit> {
-        authContext.getCurrentMemberId()
-        require(req.siruAccessToken.isNotBlank()) { "시루 액세스 토큰을 입력해 주세요." }
-        return ApiResponse.success(Unit, "시루 계정이 연동되었습니다.")
+    ): ApiResponse<MemberResponse> {
+        val member = memberService.linkSiru(authContext.getCurrentMemberId(), req.siruAccessToken)
+        return ApiResponse.success(MemberResponse.from(member), "시루 계정이 연동되었습니다.")
     }
 
     /**
@@ -162,8 +164,8 @@ class AuthController(
         ],
     )
     @DeleteMapping("/siru/link")
-    fun unlinkSiru(): ApiResponse<Unit> {
-        authContext.getCurrentMemberId()
-        return ApiResponse.success(Unit, "시루 계정 연동이 해제되었습니다.")
+    fun unlinkSiru(): ApiResponse<MemberResponse> {
+        val member = memberService.unlinkSiru(authContext.getCurrentMemberId())
+        return ApiResponse.success(MemberResponse.from(member), "시루 계정 연동이 해제되었습니다.")
     }
 }

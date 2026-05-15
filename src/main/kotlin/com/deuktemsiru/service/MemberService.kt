@@ -68,4 +68,21 @@ class MemberService(
         req.event?.let { member.notifEvent = it }
         return NotificationSettingsResponse.from(member)
     }
+
+    @Transactional
+    fun linkSiru(memberId: Long, siruAccessToken: String): Member {
+        require(siruAccessToken.isNotBlank()) { "시루 액세스 토큰을 입력해 주세요." }
+        val member = findMember(memberId)
+        member.isSiruLinked = true
+        if (member.siruBalance == 0) member.siruBalance = 50_000
+        return member
+    }
+
+    @Transactional
+    fun unlinkSiru(memberId: Long): Member {
+        val member = findMember(memberId)
+        member.isSiruLinked = false
+        member.siruBalance = 0
+        return member
+    }
 }

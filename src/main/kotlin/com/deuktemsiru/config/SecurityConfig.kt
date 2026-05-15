@@ -33,6 +33,8 @@ class SecurityConfig(
                     "/swagger-ui.html",
                     "/swagger-ui/**",
                     "/v3/api-docs/**",
+                    "/actuator/health",
+                    "/actuator/prometheus",
                     // 정적 업로드 파일
                     "/uploads/**",
                 )

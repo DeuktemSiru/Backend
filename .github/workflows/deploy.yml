@@ -1,0 +1,82 @@
+name: Deploy Backend
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-backend-production
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Validate Gradle wrapper
+        uses: gradle/actions/wrapper-validation@v4
+
+      - name: Build executable JAR
+        run: ./gradlew clean check bootJar --stacktrace
+
+      - name: Prepare deployment artifact
+        run: |
+          set -euo pipefail
+          jar_path="$(find build/libs -maxdepth 1 -type f -name '*.jar' ! -name '*-plain.jar' | head -n 1)"
+          if [ -z "$jar_path" ]; then
+            echo "No executable JAR found in build/libs" >&2
+            exit 1
+          fi
+          mkdir -p deploy-package
+          cp "$jar_path" deploy-package/app.jar
+
+      - name: Upload JAR to EC2
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          source: deploy-package/app.jar
+          target: /tmp/deuktemsiru-release
+          strip_components: 1
+
+      - name: Restart backend service
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            set -euo pipefail
+            sudo install -o app -g app -m 0644 /tmp/deuktemsiru-release/app.jar /opt/deuktemsiru/app.jar
+            sudo systemctl restart deuktemsiru
+
+            for attempt in $(seq 1 12); do
+              if curl -fsS http://127.0.0.1:8080/actuator/health; then
+                exit 0
+              fi
+              echo "Waiting for backend health check... (${attempt}/12)"
+              sleep 5
+            done
+
+            sudo systemctl status deuktemsiru --no-pager
+            sudo journalctl -u deuktemsiru -n 100 --no-pager
+            exit 1
