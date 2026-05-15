@@ -5,6 +5,7 @@ import com.deuktemsiru.dto.SalesResponse
 import com.deuktemsiru.security.AuthContext
 import com.deuktemsiru.service.OrderService
 import org.springframework.web.bind.annotation.*
+import java.time.LocalDate
 
 // ── Controller ────────────────────────────────────────────────────────────────
 
@@ -17,22 +18,23 @@ class SellerSalesController(
 
     /**
      * GET /api/v1/sellers/sales/summary
-     * 매출 통계 조회 (오늘 매출, 주문 수, 기간별 그래프, TOP 상품)
-     * @param period DAY | WEEK | MONTH (기본값: DAY) — spec v2.0 파라미터
-     * @param offset 0 = 이번 기간, 1 = 지난 기간
+     * 매출 통계 조회 (기간별 그래프, TOP 상품, 탄소 저감량)
+     * @param period DAY | WEEK | MONTH (기본값: DAY)
+     *   - DAY  : 지정 날짜의 시간대별(0~23시) 매출 차트
+     *   - WEEK : 지정 날짜가 속한 주(월~일) 일별 매출 차트
+     *   - MONTH: 지정 날짜가 속한 월의 주별 매출 차트
+     * @param date 기준 날짜 (yyyy-MM-dd, 기본값: 오늘)
      */
     @GetMapping("/summary")
     fun getSalesSummary(
         @RequestParam(defaultValue = "DAY") period: String,
-        @RequestParam(defaultValue = "0") offset: Int,
+        @RequestParam(required = false) date: String?,
     ): ApiResponse<SalesResponse> {
         val sellerId = authContext.getCurrentMemberId()
-        // spec: DAY/WEEK/MONTH → service 내부: weekly/monthly
-        val normalizedPeriod = when (period.uppercase()) {
-            "MONTH" -> "monthly"
-            else    -> "weekly"   // DAY, WEEK 모두 weekly 집계
-        }
-        val stats = orderService.getSalesStats(sellerId, normalizedPeriod, offset)
+        val targetDate = date
+            ?.let { runCatching { LocalDate.parse(it) }.getOrElse { throw IllegalArgumentException("날짜 형식은 yyyy-MM-dd 이어야 합니다.") } }
+            ?: LocalDate.now()
+        val stats = orderService.getSalesStats(sellerId, period, targetDate)
         return ApiResponse.success(stats)
     }
 }

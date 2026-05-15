@@ -4,6 +4,7 @@ import com.deuktemsiru.common.ApiResponse
 import com.deuktemsiru.security.AuthContext
 import com.deuktemsiru.service.SettlementService
 import org.springframework.web.bind.annotation.*
+import java.time.LocalDate
 
 // ── Response DTOs ─────────────────────────────────────────────────────────────
 
@@ -31,14 +32,20 @@ class SellerSettlementController(
 
     /**
      * GET /api/v1/sellers/settlements
-     * 정산 내역 조회
+     * 정산 내역 조회 — 지정한 연월의 정산 내역 반환
+     * @param year  조회 연도 (기본값: 현재 연도)
+     * @param month 조회 월 (기본값: 현재 월)
      */
     @GetMapping
     fun getSettlements(
-        @RequestParam(defaultValue = "0") page: Int,
-        @RequestParam(defaultValue = "20") size: Int,
+        @RequestParam(required = false) year: Int?,
+        @RequestParam(required = false) month: Int?,
     ): ApiResponse<SettlementListResponse> {
-        val response = settlementService.getSettlements(authContext.getCurrentMemberId(), page, size)
+        val now = LocalDate.now()
+        val targetYear = year ?: now.year
+        val targetMonth = month ?: now.monthValue
+        require(targetMonth in 1..12) { "month는 1~12 사이 값이어야 합니다." }
+        val response = settlementService.getSettlements(authContext.getCurrentMemberId(), targetYear, targetMonth)
         return ApiResponse.success(response)
     }
 }
