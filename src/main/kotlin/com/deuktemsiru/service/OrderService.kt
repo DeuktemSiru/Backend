@@ -192,25 +192,24 @@ class OrderService(
         return OrderDetailResponse.from(order)
     }
 
-    fun getSalesStats(sellerId: Long, period: String = "weekly", offset: Int = 0): SalesResponse {
+    fun getSalesStats(sellerId: Long, period: String = "DAY", targetDate: LocalDate = LocalDate.now()): SalesResponse {
         val seller = memberService.findMember(sellerId)
         val store = storeRepository.findByOwner(seller)
             .orElseThrow { NoSuchElementException("등록된 가게가 없습니다.") }
         val allOrders = orderRepository.findByStoreOrderByCreatedAtDesc(store)
             .filter { it.status != OrderStatus.CANCELLED }
-        val today = LocalDate.now()
-        val todayOrders = allOrders.filter { it.createdAt.toLocalDate() == today }
+        val targetDayOrders = allOrders.filter { it.createdAt.toLocalDate() == targetDate }
         return SalesResponse(
-            totalAmount = todayOrders.sumOf { it.totalPrice },
-            totalOrders = todayOrders.size,
-            chartData = salesData(period, offset, today, allOrders),
+            totalAmount = targetDayOrders.sumOf { it.totalPrice },
+            totalOrders = targetDayOrders.size,
+            chartData = salesData(period, targetDate, allOrders),
             topProducts = topProducts(allOrders),
             carbonSavedKg = 0.0,
         )
     }
 
-    fun getSellerSalesStats(sellerId: Long, period: String = "weekly", offset: Int = 0): SellerSalesResponse {
-        val sales = getSalesStats(sellerId, period, offset)
+    fun getSellerSalesStats(sellerId: Long, period: String = "DAY", targetDate: LocalDate = LocalDate.now()): SellerSalesResponse {
+        val sales = getSalesStats(sellerId, period, targetDate)
         return SellerSalesResponse(
             totalAmount = sales.totalAmount,
             totalOrders = sales.totalOrders,
@@ -221,11 +220,19 @@ class OrderService(
 
     // ── 내부 유틸 ────────────────────────────────────────────────────────────
 
-    private fun salesData(period: String, offset: Int, today: LocalDate, orders: List<Orders>): List<DailySales> =
-        when (period) {
-            "monthly" -> monthlySales(today.minusMonths(offset.toLong()), orders)
-            "yearly" -> yearlySales(today.year - offset, orders)
-            else -> weeklySales(today.minusDays((offset * 7).toLong()), orders)
+    private fun salesData(period: String, targetDate: LocalDate, orders: List<Orders>): List<DailySales> =
+        when (period.uppercase()) {
+            "MONTH" -> monthlySales(targetDate, orders)
+            "WEEK"  -> weeklySales(targetDate, orders)
+            else    -> dailySales(targetDate, orders)  // DAY (기본값)
+        }
+
+    private fun dailySales(date: LocalDate, orders: List<Orders>): List<DailySales> =
+        (0..23).map { hour ->
+            val amount = orders.sumOf { order ->
+                if (order.createdAt.toLocalDate() == date && order.createdAt.hour == hour) order.totalPrice else 0
+            }
+            DailySales("${hour}시", amount)
         }
 
     private fun monthlySales(targetMonth: LocalDate, orders: List<Orders>): List<DailySales> {
@@ -247,8 +254,8 @@ class OrderService(
             })
         }
 
-    private fun weeklySales(endDay: LocalDate, orders: List<Orders>): List<DailySales> {
-        val startDay = endDay.minusDays(6)
+    private fun weeklySales(referenceDate: LocalDate, orders: List<Orders>): List<DailySales> {
+        val startDay = referenceDate.minusDays(referenceDate.dayOfWeek.value.toLong() - 1) // 해당 주 월요일
         val formatter = DateTimeFormatter.ofPattern("MM/dd")
         return (0..6).map { i ->
             val date = startDay.plusDays(i.toLong())
