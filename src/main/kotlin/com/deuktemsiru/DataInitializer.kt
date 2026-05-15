@@ -20,6 +20,7 @@ class DataInitializer(
     override fun run(args: ApplicationArguments) {
         // 이미 데이터가 있으면 초기화 건너뜀 (서버 재시작 시 중복 방지)
         if (memberRepository.count() > 0) {
+            normalizeExistingSampleData()
             println("=== 이미 샘플 데이터가 존재합니다. 초기화를 건너뜁니다. ===")
             return
         }
@@ -58,7 +59,7 @@ class DataInitializer(
         val storeInfos = listOf(
             StoreSeed(
                 owner = sellers[0],
-                name = "오이도 굽는집",
+                name = "오이도굽는집",
                 category = CategoryType.BAKERY,
                 description = "오이도 산책로 근처에서 당일 생산한 빵을 저녁 픽업으로 판매합니다.",
                 address = "경기도 시흥시 오이도로 135 1층",
@@ -215,6 +216,17 @@ class DataInitializer(
         }
 
         println("=== 샘플 데이터 초기화 완료 ===")
+    }
+
+    private fun normalizeExistingSampleData() {
+        memberRepository.findByEmail("bakery@test.com").ifPresent { seller ->
+            storeRepository.findByOwner(seller).ifPresent { store ->
+                if (store.name == "오이도 굽는집") {
+                    store.name = "오이도굽는집"
+                    storeRepository.save(store)
+                }
+            }
+        }
     }
 
     private data class SellerSeed(

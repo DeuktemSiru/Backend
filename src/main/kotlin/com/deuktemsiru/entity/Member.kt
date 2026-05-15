@@ -60,6 +60,12 @@ class Member(
     // 알림 설정 — 공통
     @Column(nullable = false) var notifEvent: Boolean = false,
 
+    @Column(nullable = false)
+    var isSiruLinked: Boolean = false,
+
+    @Column(nullable = false)
+    var siruBalance: Int = 0,
+
     @CreationTimestamp
     @Column(nullable = false, updatable = false)
     val createdAt: LocalDateTime = LocalDateTime.now(),

@@ -27,4 +27,16 @@ class FcmService(
         saved.isActive = true
         fcmTokenRepository.save(saved)
     }
+
+    fun sendToMember(memberId: Long, title: String, body: String): Int {
+        val member = memberService.findMember(memberId)
+        val activeTokens = fcmTokenRepository.findByMemberAndIsActiveTrue(member)
+        // Firebase Admin SDK 설정이 없는 로컬/과제 환경에서는 DB 알림을 실제 발송원으로 삼고,
+        // 활성 토큰 개수를 반환해 운영 연동 지점을 명확히 남긴다.
+        return activeTokens.size.also {
+            if (it > 0) {
+                println("FCM stub: $it token(s), title=$title, body=$body")
+            }
+        }
+    }
 }

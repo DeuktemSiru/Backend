@@ -15,10 +15,15 @@ import com.deuktemsiru.entity.MemberRole
 import com.deuktemsiru.entity.OrderItem
 import com.deuktemsiru.entity.OrderStatus
 import com.deuktemsiru.entity.Orders
+import com.deuktemsiru.entity.Payment
+import com.deuktemsiru.entity.PaymentMethod
+import com.deuktemsiru.entity.PaymentStatus
 import com.deuktemsiru.entity.Product
 import com.deuktemsiru.entity.ProductStatus
 import com.deuktemsiru.entity.Store
+import com.deuktemsiru.repository.MemberStatsRepository
 import com.deuktemsiru.repository.OrderRepository
+import com.deuktemsiru.repository.PaymentRepository
 import com.deuktemsiru.repository.ProductRepository
 import com.deuktemsiru.repository.StoreRepository
 import org.springframework.stereotype.Service
@@ -32,8 +37,10 @@ import kotlin.math.min
 @Transactional(readOnly = true)
 class OrderService(
     private val orderRepository: OrderRepository,
+    private val paymentRepository: PaymentRepository,
     private val storeRepository: StoreRepository,
     private val productRepository: ProductRepository,
+    private val memberStatsRepository: MemberStatsRepository,
     private val memberService: MemberService,
     private val storeService: StoreService,
 ) {
@@ -76,7 +83,8 @@ class OrderService(
         order.totalPrice = order.items.sumOf { it.unitPrice * it.quantity }
 
         val saved = orderRepository.save(order)
-        return CreateOrderResponse.from(saved, req.paymentMethod)
+        val payment = createPayment(saved, req.paymentMethod)
+        return CreateOrderResponse.from(saved, payment)
     }
 
     fun getMyOrders(consumerId: Long, statusFilter: String? = null): List<OrderListItemResponse> {
@@ -93,7 +101,7 @@ class OrderService(
     fun getOrder(orderId: Long): OrderDetailResponse {
         val order = orderRepository.findById(orderId)
             .orElseThrow { NoSuchElementException("주문을 찾을 수 없습니다.") }
-        return OrderDetailResponse.from(order)
+        return OrderDetailResponse.from(order, latestPayment(order))
     }
 
     @Transactional
@@ -107,6 +115,9 @@ class OrderService(
         ) { "픽업 완료되거나 이미 취소된 주문은 취소할 수 없습니다." }
 
         order.status = OrderStatus.CANCELLED
+        latestPayment(order)?.let {
+            it.status = PaymentStatus.REFUNDED
+        }
         // 재고 복구
         order.items.forEach { item ->
             item.product.quantityRemaining += item.quantity
@@ -114,7 +125,7 @@ class OrderService(
                 item.product.status = ProductStatus.AVAILABLE
             }
         }
-        return OrderDetailResponse.from(order)
+        return OrderDetailResponse.from(order, latestPayment(order))
     }
 
     // ── 판매자용 ──────────────────────────────────────────────────────────────
@@ -142,7 +153,7 @@ class OrderService(
         val fromIndex = page.coerceAtLeast(0) * safeSize
         if (fromIndex >= orders.size) return emptyList()
         val toIndex = min(fromIndex + safeSize, orders.size)
-        return orders.subList(fromIndex, toIndex).map { OrderDetailResponse.from(it) }
+        return orders.subList(fromIndex, toIndex).map { OrderDetailResponse.from(it, latestPayment(it)) }
     }
 
     fun getStoreOrder(sellerId: Long, orderId: Long): OrderDetailResponse {
@@ -152,7 +163,7 @@ class OrderService(
         val order = orderRepository.findById(orderId)
             .orElseThrow { NoSuchElementException("주문을 찾을 수 없습니다.") }
         require(order.store.storeId == store.storeId) { "접근 권한이 없습니다." }
-        return OrderDetailResponse.from(order)
+        return OrderDetailResponse.from(order, latestPayment(order))
     }
 
     fun getStoreOrderEntities(sellerId: Long): List<Orders> {
@@ -172,11 +183,18 @@ class OrderService(
         val order = orderRepository.findById(orderId)
             .orElseThrow { NoSuchElementException("주문을 찾을 수 없습니다.") }
         require(order.store.storeId == store.storeId) { "접근 권한이 없습니다." }
-        require(canTransition(order.status, req.status)) {
+        val previousStatus = order.status
+        require(canTransition(previousStatus, req.status)) {
             "주문 상태를 ${order.status}에서 ${req.status}(으)로 변경할 수 없습니다."
         }
         order.status = req.status
-        return OrderDetailResponse.from(order)
+        if (req.status == OrderStatus.CANCELLED) {
+            latestPayment(order)?.let { it.status = PaymentStatus.REFUNDED }
+        }
+        if (previousStatus != OrderStatus.PICKED_UP && req.status == OrderStatus.PICKED_UP) {
+            applyPickupStats(order)
+        }
+        return OrderDetailResponse.from(order, latestPayment(order))
     }
 
     @Transactional
@@ -188,8 +206,7 @@ class OrderService(
         val order = orderRepository.findByPickupCode(pickupCode)
             ?: throw NoSuchElementException("픽업 코드를 찾을 수 없습니다.")
         require(order.store.storeId == store.storeId) { "접근 권한이 없습니다." }
-        if (order.status == OrderStatus.CONFIRMED) order.status = OrderStatus.PICKED_UP
-        return OrderDetailResponse.from(order)
+        return OrderDetailResponse.from(order, latestPayment(order))
     }
 
     fun getSalesStats(sellerId: Long, period: String = "DAY", targetDate: LocalDate = LocalDate.now()): SalesResponse {
@@ -219,6 +236,44 @@ class OrderService(
     }
 
     // ── 내부 유틸 ────────────────────────────────────────────────────────────
+
+    private fun createPayment(order: Orders, requestedMethod: String?): Payment {
+        val method = runCatching {
+            PaymentMethod.valueOf((requestedMethod ?: "CASH").uppercase())
+        }.getOrElse { throw IllegalArgumentException("지원하지 않는 결제 수단입니다.") }
+
+        if (method == PaymentMethod.SIRU) {
+            require(order.consumer.isSiruLinked) { "시루 계정 연동이 필요합니다." }
+            require(order.consumer.siruBalance >= order.totalPrice) { "시루 잔액이 부족합니다." }
+            order.consumer.siruBalance -= order.totalPrice
+        }
+
+        return paymentRepository.save(
+            Payment(
+                order = order,
+                method = method,
+                amount = order.totalPrice,
+                status = PaymentStatus.COMPLETED,
+                paidAt = java.time.LocalDateTime.now(),
+                externalTransactionId = "${method.name}-${order.orderId}-${System.currentTimeMillis()}",
+            )
+        )
+    }
+
+    private fun latestPayment(order: Orders): Payment? =
+        paymentRepository.findFirstByOrderOrderByPaymentIdDesc(order).orElse(null)
+
+    private fun applyPickupStats(order: Orders) {
+        val stats = memberStatsRepository.findByMember(order.consumer).orElseGet {
+            com.deuktemsiru.entity.MemberStats(member = order.consumer)
+        }
+        val originalTotal = order.items.sumOf { it.product.originalPrice * it.quantity }
+        val savedAmount = (originalTotal - order.totalPrice).coerceAtLeast(0)
+        stats.totalOrders += 1
+        stats.totalSavedAmount += savedAmount
+        stats.totalCarbonSavedKg += order.items.sumOf { it.quantity } * 0.25
+        memberStatsRepository.save(stats)
+    }
 
     private fun salesData(period: String, targetDate: LocalDate, orders: List<Orders>): List<DailySales> =
         when (period.uppercase()) {

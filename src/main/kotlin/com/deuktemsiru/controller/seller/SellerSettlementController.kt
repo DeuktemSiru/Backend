@@ -20,6 +20,7 @@ data class SettlementItem(
 )
 
 data class SettlementListResponse(val settlements: List<SettlementItem>)
+data class SettlementWithdrawRequest(val year: Int, val month: Int)
 
 // ── Controller ────────────────────────────────────────────────────────────────
 
@@ -47,5 +48,16 @@ class SellerSettlementController(
         require(targetMonth in 1..12) { "month는 1~12 사이 값이어야 합니다." }
         val response = settlementService.getSettlements(authContext.getCurrentMemberId(), targetYear, targetMonth)
         return ApiResponse.success(response)
+    }
+
+    @PostMapping("/withdrawals")
+    fun requestWithdrawal(
+        @RequestBody req: SettlementWithdrawRequest,
+    ): ApiResponse<SettlementItem> {
+        require(req.month in 1..12) { "month는 1~12 사이 값이어야 합니다." }
+        return ApiResponse.success(
+            settlementService.requestWithdrawal(authContext.getCurrentMemberId(), req.year, req.month),
+            "출금 신청이 접수되었습니다.",
+        )
     }
 }

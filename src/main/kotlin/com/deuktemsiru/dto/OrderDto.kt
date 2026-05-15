@@ -3,6 +3,7 @@ package com.deuktemsiru.dto
 import com.deuktemsiru.entity.OrderItem
 import com.deuktemsiru.entity.OrderStatus
 import com.deuktemsiru.entity.Orders
+import com.deuktemsiru.entity.Payment
 import java.time.LocalDateTime
 
 // ── 요청 ─────────────────────────────────────────────────────────────────────
@@ -33,14 +34,14 @@ data class CreateOrderResponse(
     val payment: PaymentInfo,
 ) {
     companion object {
-        fun from(order: Orders, paymentMethod: String?) = CreateOrderResponse(
+        fun from(order: Orders, payment: Payment?) = CreateOrderResponse(
             orderId = order.orderId,
             pickupCode = order.pickupCode,
             status = order.status,
             totalPrice = order.totalPrice,
             payment = PaymentInfo(
-                method = paymentMethod ?: "CASH",
-                status = "PENDING",
+                method = payment?.method?.name ?: "CASH",
+                status = payment?.status?.name ?: "PENDING",
             ),
         )
     }
@@ -71,7 +72,7 @@ data class OrderDetailResponse(
     val payment: PaymentInfo,
 ) {
     companion object {
-        fun from(order: Orders, paymentMethod: String? = null) = OrderDetailResponse(
+        fun from(order: Orders, payment: Payment? = null) = OrderDetailResponse(
             orderId = order.orderId,
             pickupCode = order.pickupCode,
             status = order.status,
@@ -79,8 +80,9 @@ data class OrderDetailResponse(
             storeName = order.store.name,
             items = order.items.map { OrderItemDetailResponse.from(it) },
             payment = PaymentInfo(
-                method = paymentMethod ?: "CASH",
-                status = if (order.status == OrderStatus.CANCELLED) "REFUNDED" else "PENDING",
+                method = payment?.method?.name ?: "CASH",
+                status = payment?.status?.name
+                    ?: if (order.status == OrderStatus.CANCELLED) "REFUNDED" else "PENDING",
             ),
         )
     }

@@ -3,6 +3,7 @@ package com.deuktemsiru.controller.seller
 import com.deuktemsiru.common.ApiResponse
 import com.deuktemsiru.dto.OrderDetailResponse
 import com.deuktemsiru.dto.UpdateOrderStatusRequest
+import com.deuktemsiru.entity.OrderStatus
 import com.deuktemsiru.security.AuthContext
 import com.deuktemsiru.service.OrderService
 import org.springframework.data.domain.PageRequest
@@ -60,7 +61,9 @@ class SellerOrderController(
         @RequestBody req: PickupConfirmRequest,
     ): ApiResponse<OrderDetailResponse> {
         val sellerId = authContext.getCurrentMemberId()
-        val order = orderService.verifyPickupCode(sellerId, req.pickupCode)
+        val verified = orderService.verifyPickupCode(sellerId, req.pickupCode)
+        require(verified.orderId == orderId) { "주문과 픽업 코드가 일치하지 않습니다." }
+        val order = orderService.updateOrderStatus(sellerId, orderId, UpdateOrderStatusRequest(OrderStatus.PICKED_UP))
         return ApiResponse.success(order)
     }
 
@@ -76,5 +79,21 @@ class SellerOrderController(
         val sellerId = authContext.getCurrentMemberId()
         val order = orderService.updateOrderStatus(sellerId, orderId, req)
         return ApiResponse.success(order)
+    }
+
+}
+
+@RestController
+@RequestMapping("/api/v1/sellers/pickup")
+class SellerPickupController(
+    private val orderService: OrderService,
+    private val authContext: AuthContext,
+) {
+    @GetMapping("/verify")
+    fun verifyPickupCode(
+        @RequestParam code: String,
+    ): ApiResponse<OrderDetailResponse> {
+        val sellerId = authContext.getCurrentMemberId()
+        return ApiResponse.success(orderService.verifyPickupCode(sellerId, code))
     }
 }

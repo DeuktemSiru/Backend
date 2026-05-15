@@ -31,4 +31,10 @@ class SellerNotificationController(
         return ResponseEntity.status(HttpStatus.CREATED)
             .body(ApiResponse.created(notification, "알림이 발송되었습니다."))
     }
+
+    @GetMapping
+    fun getNotifications(): ApiResponse<List<SellerNotificationResponse>> {
+        val sellerId = authContext.getCurrentMemberId()
+        return ApiResponse.success(sellerAppService.getSellerNotifications(sellerId))
+    }
 }
