@@ -1,7 +1,10 @@
 package com.deuktemsiru.service
 
 import com.deuktemsiru.dto.MemberStatsResponse
+import com.deuktemsiru.dto.NotificationSettingsResponse
+import com.deuktemsiru.dto.UpdateNotificationSettingsRequest
 import com.deuktemsiru.entity.Member
+import com.deuktemsiru.entity.MemberRole
 import com.deuktemsiru.repository.MemberRepository
 import com.deuktemsiru.repository.MemberStatsRepository
 import org.springframework.stereotype.Service
@@ -43,5 +46,26 @@ class MemberService(
         return memberStatsRepository.findByMember(member)
             .map { MemberStatsResponse.from(it) }
             .orElse(MemberStatsResponse.empty())
+    }
+
+    fun getNotificationSettings(memberId: Long): NotificationSettingsResponse {
+        val member = findMember(memberId)
+        return NotificationSettingsResponse.from(member)
+    }
+
+    @Transactional
+    fun updateNotificationSettings(memberId: Long, req: UpdateNotificationSettingsRequest): NotificationSettingsResponse {
+        val member = findMember(memberId)
+        if (member.role == MemberRole.CONSUMER) {
+            req.newProduct?.let { member.notifNewProduct = it }
+            req.pickupReminder?.let { member.notifPickupReminder = it }
+            req.orderConfirmed?.let { member.notifOrderConfirmed = it }
+        } else {
+            req.newOrder?.let { member.notifNewOrder = it }
+            req.pickupComplete?.let { member.notifPickupComplete = it }
+            req.soldOut?.let { member.notifSoldOut = it }
+        }
+        req.event?.let { member.notifEvent = it }
+        return NotificationSettingsResponse.from(member)
     }
 }

@@ -3,6 +3,8 @@ package com.deuktemsiru.controller.member
 import com.deuktemsiru.common.ApiResponse
 import com.deuktemsiru.dto.MemberResponse
 import com.deuktemsiru.dto.MemberStatsResponse
+import com.deuktemsiru.dto.NotificationSettingsResponse
+import com.deuktemsiru.dto.UpdateNotificationSettingsRequest
 import com.deuktemsiru.security.AuthContext
 import com.deuktemsiru.service.MemberService
 import org.springframework.web.bind.annotation.*
@@ -61,5 +63,27 @@ class MemberController(
     fun getMyStats(): ApiResponse<MemberStatsResponse> {
         val memberId = authContext.getCurrentMemberId()
         return ApiResponse.success(memberService.getStats(memberId), "통계 조회 성공")
+    }
+
+    /**
+     * GET /api/v1/members/me/notification-settings
+     * 알림 설정 조회 — 소비자/판매자 역할에 따라 다른 필드 반환
+     */
+    @GetMapping("/me/notification-settings")
+    fun getNotificationSettings(): ApiResponse<NotificationSettingsResponse> {
+        val memberId = authContext.getCurrentMemberId()
+        return ApiResponse.success(memberService.getNotificationSettings(memberId), "알림 설정 조회 성공")
+    }
+
+    /**
+     * PUT /api/v1/members/me/notification-settings
+     * 알림 설정 변경 — 소비자/판매자 역할에 맞는 필드만 적용됨
+     */
+    @PutMapping("/me/notification-settings")
+    fun updateNotificationSettings(
+        @RequestBody req: UpdateNotificationSettingsRequest,
+    ): ApiResponse<NotificationSettingsResponse> {
+        val memberId = authContext.getCurrentMemberId()
+        return ApiResponse.success(memberService.updateNotificationSettings(memberId, req), "설정 변경 성공")
     }
 }
