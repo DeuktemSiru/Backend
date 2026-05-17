@@ -25,7 +25,7 @@ import org.testcontainers.junit.jupiter.Testcontainers
 
 @SpringBootTest
 @Transactional
-@Testcontainers
+@Testcontainers(disabledWithoutDocker = true)
 class DeuktemsiruApplicationTests {
 
     companion object {

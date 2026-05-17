@@ -24,6 +24,7 @@ data class UpdateSaleStatusRequest(
 )
 
 data class UpdateSaleItemRequest(
+    val originalPrice: Int? = null,
     val discountPrice: Int? = null,
     val quantityRemaining: Int? = null,
 )
@@ -92,6 +93,9 @@ data class SellerMenuItemResponse(
 data class SellerStoreResponse(
     val storeId: Long,
     val name: String,
+    val address: String,
+    val phone: String?,
+    val closingTime: String?,
     val isActive: Boolean,
     val isVerified: Boolean,
     val todayProductCount: Int,
@@ -103,7 +107,9 @@ data class SellerStoreResponse(
 // ── 가게 수정 요청 ─────────────────────────────────────────────────────────────
 data class SellerUpdateStoreRequest(
     val description: String? = null,
+    val address: String? = null,
     val phone: String? = null,
+    val closingTime: String? = null,
 )
 
 // ── 가게 등록 요청 (POST /sellers/stores) ────────────────────────────────────

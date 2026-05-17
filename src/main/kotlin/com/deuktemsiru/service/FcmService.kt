@@ -21,8 +21,17 @@ class FcmService(
         deviceInfo?.let { require(it.length <= 100) { "기기 정보는 최대 100자입니다." } }
 
         val member = memberService.findMember(memberId)
-        val saved = fcmTokenRepository.findByToken(token).orElseGet {
+        val existing = fcmTokenRepository.findByToken(token).orElse(null)
+        val saved = if (existing == null) {
             FcmToken(member = member, token = token)
+        } else {
+            // B4: 토큰이 다른 회원에게 속해 있으면 기존 레코드를 삭제하여 orphan 방지
+            if (existing.member.memberId != member.memberId) {
+                fcmTokenRepository.delete(existing)
+                FcmToken(member = member, token = token)
+            } else {
+                existing
+            }
         }
         saved.member = member
         saved.deviceInfo = deviceInfo

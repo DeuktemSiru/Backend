@@ -76,4 +76,4 @@ class Product(
     val images: MutableList<ProductImage> = mutableListOf(),
 )
 
-enum class ProductStatus { AVAILABLE, SOLD_OUT, EXPIRED }
+enum class ProductStatus { AVAILABLE, SOLD_OUT, EXPIRED, DELETED }

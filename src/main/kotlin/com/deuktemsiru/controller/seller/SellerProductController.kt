@@ -115,9 +115,9 @@ class SellerProductController(
     @DeleteMapping("/{productId}")
     fun deleteProduct(
         @PathVariable productId: Long,
-    ): ResponseEntity<Void> {
+    ): ApiResponse<Unit> {
         val sellerId = authContext.getCurrentMemberId()
         sellerAppService.deleteProduct(sellerId, productId)
-        return ResponseEntity.noContent().build()
+        return ApiResponse.success(Unit, "판매 상품이 삭제되었습니다.")
     }
 }

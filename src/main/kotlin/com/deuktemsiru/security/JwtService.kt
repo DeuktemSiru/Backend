@@ -1,5 +1,7 @@
 package com.deuktemsiru.security
 
+import com.fasterxml.jackson.databind.ObjectMapper
+import com.fasterxml.jackson.core.type.TypeReference
 import com.deuktemsiru.entity.Member
 import com.deuktemsiru.entity.MemberRole
 import jakarta.annotation.PostConstruct
@@ -18,6 +20,7 @@ class JwtService(
     @Value("\${app.jwt.secret}") private val secret: String,
     @Value("\${app.jwt.access-token-expiration-seconds:1800}") val accessTokenExpirationSeconds: Long,
     @Value("\${app.jwt.refresh-token-expiration-seconds:1209600}") val refreshTokenExpirationSeconds: Long,
+    private val objectMapper: ObjectMapper,
 ) {
 
     private val log = LoggerFactory.getLogger(JwtService::class.java)
@@ -34,6 +37,7 @@ class JwtService(
     private val decoder = Base64.getUrlDecoder()
 
     private enum class TokenType { ACCESS, REFRESH }
+    private val payloadType = object : TypeReference<Map<String, Any?>>() {}
 
     // ──────────────────────── 토큰 생성 ────────────────────────
 
@@ -57,10 +61,10 @@ class JwtService(
     /** Authorization 헤더의 Access Token 검증 → JwtUser 반환 */
     fun validate(token: String): JwtUser? {
         val payload = verifySignatureAndExpiry(token) ?: return null
-        if (extractString(payload, "type") != TokenType.ACCESS.name) return null
+        if (payload["type"] as? String != TokenType.ACCESS.name) return null
 
-        val memberId = extractString(payload, "sub")?.toLongOrNull() ?: return null
-        val role = extractString(payload, "role")
+        val memberId = (payload["sub"] as? String)?.toLongOrNull() ?: return null
+        val role = (payload["role"] as? String)
             ?.let { runCatching { MemberRole.valueOf(it) }.getOrNull() } ?: return null
 
         return JwtUser(memberId = memberId, role = role)
@@ -69,23 +73,30 @@ class JwtService(
     /** Refresh Token 검증 → memberId 반환 */
     fun validateRefreshToken(token: String): Long? {
         val payload = verifySignatureAndExpiry(token) ?: return null
-        if (extractString(payload, "type") != TokenType.REFRESH.name) return null
-        return extractString(payload, "sub")?.toLongOrNull()
+        if (payload["type"] as? String != TokenType.REFRESH.name) return null
+        return (payload["sub"] as? String)?.toLongOrNull()
     }
 
     // ──────────────────────── 내부 유틸 ────────────────────────
 
-    private fun verifySignatureAndExpiry(token: String): String? {
+    private fun verifySignatureAndExpiry(token: String): Map<String, Any?>? {
         val parts = token.split(".")
         if (parts.size != 3) return null
 
         val unsigned = "${parts[0]}.${parts[1]}"
-        if (!MessageDigest.isEqual(sign(unsigned).toByteArray(), parts[2].toByteArray())) return null
+        if (!MessageDigest.isEqual(
+                sign(unsigned).toByteArray(StandardCharsets.UTF_8),
+                parts[2].toByteArray(StandardCharsets.UTF_8),
+            )
+        ) return null
 
         val payload = runCatching {
-            String(decoder.decode(parts[1]), StandardCharsets.UTF_8)
+            objectMapper.readValue(
+                String(decoder.decode(parts[1]), StandardCharsets.UTF_8),
+                payloadType,
+            )
         }.getOrNull() ?: return null
-        val expiresAt = extractNumber(payload, "exp") ?: return null
+        val expiresAt = (payload["exp"] as? Number)?.toLong() ?: return null
         if (Instant.now().epochSecond >= expiresAt) return null
 
         return payload
@@ -99,10 +110,4 @@ class JwtService(
         mac.init(SecretKeySpec(secret.toByteArray(StandardCharsets.UTF_8), "HmacSHA256"))
         return encoder.encodeToString(mac.doFinal(value.toByteArray(StandardCharsets.UTF_8)))
     }
-
-    private fun extractString(json: String, key: String): String? =
-        Regex(""""$key"\s*:\s*"([^"]+)"""").find(json)?.groupValues?.get(1)
-
-    private fun extractNumber(json: String, key: String): Long? =
-        Regex(""""$key"\s*:\s*(\d+)""").find(json)?.groupValues?.get(1)?.toLongOrNull()
 }

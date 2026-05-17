@@ -13,6 +13,7 @@ import com.deuktemsiru.entity.CategoryType
 import com.deuktemsiru.entity.ProductStatus
 import com.deuktemsiru.entity.Store
 import com.deuktemsiru.entity.StoreCategory
+import com.deuktemsiru.entity.StoreImage
 import com.deuktemsiru.entity.Wishlist
 import com.deuktemsiru.repository.MenuItemRepository
 import com.deuktemsiru.repository.ProductRepository
@@ -74,11 +75,9 @@ class StoreService(
 
     @Transactional
     fun toggleWishlist(userId: Long, storeId: Long): Boolean {
-        val member = memberService.findMember(userId)
-        val store = findStore(storeId)
-        val existing = wishlistRepository.findByMemberAndStore(member, store)
-        return if (existing.isPresent) {
-            wishlistRepository.delete(existing.get())
+        val (member, store, existing) = findWishlistEntry(userId, storeId)
+        return if (existing != null) {
+            wishlistRepository.delete(existing)
             false
         } else {
             wishlistRepository.save(Wishlist(member = member, store = store))
@@ -88,20 +87,21 @@ class StoreService(
 
     @Transactional
     fun addWishlist(userId: Long, storeId: Long) {
-        val member = memberService.findMember(userId)
-        val store = findStore(storeId)
-        val existing = wishlistRepository.findByMemberAndStore(member, store)
-        if (existing.isPresent) throw IllegalStateException("이미 찜한 가게입니다.")
+        val (member, store, existing) = findWishlistEntry(userId, storeId)
+        if (existing != null) throw IllegalStateException("이미 찜한 가게입니다.")
         wishlistRepository.save(Wishlist(member = member, store = store))
     }
 
     @Transactional
     fun removeWishlist(userId: Long, storeId: Long) {
+        val (_, _, existing) = findWishlistEntry(userId, storeId)
+        wishlistRepository.delete(existing ?: throw NoSuchElementException("찜한 가게가 아닙니다."))
+    }
+
+    private fun findWishlistEntry(userId: Long, storeId: Long): Triple<com.deuktemsiru.entity.Member, Store, Wishlist?> {
         val member = memberService.findMember(userId)
         val store = findStore(storeId)
-        val existing = wishlistRepository.findByMemberAndStore(member, store)
-            .orElseThrow { NoSuchElementException("찜한 가게가 아닙니다.") }
-        wishlistRepository.delete(existing)
+        return Triple(member, store, wishlistRepository.findByMemberAndStore(member, store).orElse(null))
     }
 
     fun findStore(storeId: Long) =
@@ -127,7 +127,9 @@ class StoreService(
             storeRepository.findAll()
 
         val today = LocalDate.now()
-        val availableCounts = availableProductCounts(allStores, today)
+        val productsByStore = displayProductsByStore(allStores, today)
+        val availableCounts = productsByStore.mapValues { (_, products) -> products.sumOf { it.quantityRemaining } }
+        val representativeProducts = productsByStore.mapValues { (_, products) -> representativeProduct(products) }
         val hasLocation = latitude != null && longitude != null
         val filtered = if (keyword != null)
             allStores.filter { it.name.contains(keyword, ignoreCase = true) }
@@ -145,8 +147,13 @@ class StoreService(
         }
         return sorted.map { (store, distance) ->
             val count = availableCounts[store.storeId] ?: 0
-            StoreListItemResponse.from(store, availableProductCount = count, distanceM = distance)
-        }.pageSlice(page, size)
+            StoreListItemResponse.from(
+                store,
+                availableProductCount = count,
+                distanceM = distance,
+                representativeProduct = representativeProducts[store.storeId],
+            )
+        }.toPaged(page, size)
     }
 
     // ── 구매자 앱 가게 상세 (GET /stores/{storeId}) ───────────────────────────
@@ -167,9 +174,9 @@ class StoreService(
         else
             storeRepository.findAll()
         val today = LocalDate.now()
+        val counts = availableProductCounts(stores, today)
         return stores.map { store ->
-            val count = availableProductCount(store, today)
-            StoreMarkerResponse.from(store, availableProductCount = count)
+            StoreMarkerResponse.from(store, availableProductCount = counts[store.storeId] ?: 0)
         }
     }
 
@@ -208,7 +215,7 @@ class StoreService(
             "quantity" -> products.sortedByDescending { it.quantityRemaining }
             else -> if (hasLocation) products.sortedBy { it.distanceM } else products.sortedBy { it.name }
         }
-        return sorted.pageSlice(page, size)
+        return sorted.toPaged(page, size)
     }
 
     // ── 상품 상세 (GET /products/{productId}) ────────────────────────────────
@@ -263,6 +270,20 @@ class StoreService(
         return store
     }
 
+    @Transactional
+    fun createStore(
+        sellerId: Long,
+        req: CreateStoreRequest,
+        thumbnailUrl: String?,
+        imageUrls: List<String>,
+    ): Store {
+        val store = createStore(sellerId, req, thumbnailUrl)
+        imageUrls.forEachIndexed { index, imageUrl ->
+            store.images += StoreImage(store = store, imageUrl = imageUrl, displayOrder = index)
+        }
+        return store
+    }
+
     private fun availableProductCount(store: Store, date: LocalDate): Int =
         productRepository.countByStoreAndAvailableDateAndStatus(store, date, ProductStatus.AVAILABLE)
 
@@ -271,6 +292,27 @@ class StoreService(
         if (storeIds.isEmpty()) return emptyMap()
         return productRepository.countAvailableProductsByStoreIds(storeIds, date)
             .associate { it.storeId to it.productCount.toInt() }
+    }
+
+    private fun displayProductsByStore(stores: List<Store>, date: LocalDate): Map<Long, List<com.deuktemsiru.entity.Product>> {
+        if (stores.isEmpty()) return emptyMap()
+        val todayProducts = productRepository.findByStoreInAndAvailableDateAndStatus(stores, date, ProductStatus.AVAILABLE)
+            .groupBy { it.store.storeId }
+        return stores.associate { store ->
+            val products = todayProducts[store.storeId]
+                ?: productRepository.findByStore(store).filter {
+                    it.status == ProductStatus.AVAILABLE && it.quantityRemaining > 0
+                }
+            store.storeId to products
+        }
+    }
+
+    private fun representativeProduct(products: List<com.deuktemsiru.entity.Product>): com.deuktemsiru.entity.Product? {
+        return products.maxWithOrNull(
+            compareBy<com.deuktemsiru.entity.Product> {
+                if (it.originalPrice > 0) (it.originalPrice - it.discountPrice).toDouble() / it.originalPrice else 0.0
+            }.thenByDescending { it.quantityRemaining }
+        )
     }
 
     private fun distanceMeters(
@@ -291,7 +333,8 @@ class StoreService(
         return (earthRadiusMeters * c).roundToInt()
     }
 
-    private fun <T> List<T>.pageSlice(page: Int, size: Int): PageSlice<T> {
+    /** S6: 리스트를 페이지 단위로 잘라 PageSlice 를 반환하는 확장 함수 */
+    private fun <T> List<T>.toPaged(page: Int, size: Int): PageSlice<T> {
         val safeSize = size.coerceAtLeast(1)
         val fromIndex = page.coerceAtLeast(0) * safeSize
         if (fromIndex >= this.size) return PageSlice(emptyList(), false)

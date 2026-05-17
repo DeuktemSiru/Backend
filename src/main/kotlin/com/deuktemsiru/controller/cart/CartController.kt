@@ -24,8 +24,12 @@ data class CartItem(
     val productName: String,
     val storeId: Long,
     val storeName: String,
+    val storeLatitude: Double,
+    val storeLongitude: Double,
     val originalPrice: Int,
     val discountPrice: Int,
+    val pickupStart: String,
+    val pickupEnd: String,
     val quantity: Int,
     val imageUrl: String?,
 )

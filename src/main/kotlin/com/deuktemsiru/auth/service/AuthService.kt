@@ -14,7 +14,10 @@ import com.deuktemsiru.repository.FcmTokenRepository
 import com.deuktemsiru.repository.MemberRepository
 import com.deuktemsiru.repository.RefreshTokenRepository
 import com.deuktemsiru.security.JwtService
+import org.springframework.beans.factory.annotation.Autowired
+import org.springframework.context.annotation.Lazy
 import org.springframework.stereotype.Service
+import org.springframework.transaction.annotation.Propagation
 import org.springframework.transaction.annotation.Transactional
 import java.security.MessageDigest
 import java.time.LocalDateTime
@@ -29,6 +32,8 @@ class AuthService(
     private val fcmTokenRepository: FcmTokenRepository,
     private val jwtService: JwtService,
 ) {
+    // 자기 참조: REQUIRES_NEW 트랜잭션 메서드를 프록시를 통해 호출하기 위해 필요
+    @Lazy @Autowired private lateinit var self: AuthService
 
     /**
      * 카카오 소셜 로그인 / 자동 회원가입.
@@ -138,7 +143,8 @@ class AuthService(
 
         // 3) DB 만료 시각 재확인
         if (storedToken.expiredAt.isBefore(LocalDateTime.now())) {
-            storedToken.isRevoked = true
+            // REQUIRES_NEW로 별도 커밋 — 외부 트랜잭션 롤백과 무관하게 폐기 상태를 저장
+            self.revokeExpiredToken(storedToken.refreshTokenId)
             throw UnauthorizedException("만료된 리프레시 토큰입니다.")
         }
 
@@ -159,6 +165,12 @@ class AuthService(
     }
 
     // ──────────────────────── 내부 유틸 ────────────────────────
+
+    /** 만료 토큰을 별도 트랜잭션으로 폐기. 외부 롤백과 독립적으로 커밋된다. */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    fun revokeExpiredToken(tokenId: Long) {
+        refreshTokenRepository.revokeById(tokenId)
+    }
 
     /**
      * 디버그 사용자를 DB에서 조회하거나, 없으면 새로 생성합니다.

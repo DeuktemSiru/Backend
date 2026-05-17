@@ -1,5 +1,6 @@
 package com.deuktemsiru.dto
 
+import com.fasterxml.jackson.annotation.JsonProperty
 import com.deuktemsiru.entity.Member
 import com.deuktemsiru.entity.MemberGender
 import com.deuktemsiru.entity.MemberRole
@@ -68,6 +69,7 @@ data class MemberResponse(
     val gender: MemberGender?,
     val birth: LocalDate?,
     val status: Int,          // 1=활성, 0=비활성 (ERD tinyint 기준)
+    @get:JsonProperty("isSiruLinked")
     val isSiruLinked: Boolean,
     val siruBalance: Int,
     val createdAt: LocalDateTime,

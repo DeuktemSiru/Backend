@@ -33,6 +33,9 @@ class Store(
     @Column(length = 20)
     var phone: String? = null,
 
+    @Column(length = 5)
+    var closingTime: String? = null,
+
     @Column(length = 500)
     var thumbnailUrl: String? = null,
 

@@ -1,0 +1,2 @@
+ALTER TABLE store
+    ADD COLUMN IF NOT EXISTS closing_time VARCHAR(5);

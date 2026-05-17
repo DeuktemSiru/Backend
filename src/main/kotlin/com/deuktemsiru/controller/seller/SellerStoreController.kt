@@ -5,6 +5,7 @@ import com.deuktemsiru.dto.CreateStoreRequest
 import com.deuktemsiru.dto.SellerStoreResponse
 import com.deuktemsiru.dto.SellerUpdateStoreRequest
 import com.deuktemsiru.security.AuthContext
+import com.deuktemsiru.service.MenuImageStorageService
 import com.deuktemsiru.service.SellerAppService
 import com.deuktemsiru.service.StoreService
 import org.springframework.http.HttpStatus
@@ -19,6 +20,7 @@ data class CreateStoreResponse(val storeId: Long, val name: String)
 class SellerStoreController(
     private val sellerAppService: SellerAppService,
     private val storeService: StoreService,
+    private val menuImageStorageService: MenuImageStorageService,
     private val authContext: AuthContext,
 ) {
     /**
@@ -69,8 +71,9 @@ class SellerStoreController(
             phone = phone,
             categories = categories,
         )
-        // 썸네일 저장 (MenuImageStorageService 재사용)
-        val store = storeService.createStore(sellerId, req, thumbnailUrl = null)
+        val thumbnailUrl = menuImageStorageService.save(thumbnail)
+        val imageUrls = images.orEmpty().mapNotNull { menuImageStorageService.save(it) }
+        val store = storeService.createStore(sellerId, req, thumbnailUrl, imageUrls)
         return ResponseEntity.status(HttpStatus.CREATED)
             .body(ApiResponse.created(CreateStoreResponse(store.storeId, store.name), "가게 등록 성공"))
     }

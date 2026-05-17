@@ -15,7 +15,6 @@ import com.deuktemsiru.repository.MenuItemRepository
 import com.deuktemsiru.repository.NotificationRepository
 import com.deuktemsiru.repository.OrderRepository
 import com.deuktemsiru.repository.ProductRepository
-import com.deuktemsiru.repository.StoreRepository
 import com.deuktemsiru.repository.WishlistRepository
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -25,7 +24,6 @@ import java.time.LocalTime
 @Service
 @Transactional(readOnly = true)
 class SellerAppService(
-    private val storeRepository: StoreRepository,
     private val menuItemRepository: MenuItemRepository,
     private val productRepository: ProductRepository,
     private val orderRepository: OrderRepository,
@@ -35,6 +33,8 @@ class SellerAppService(
     private val memberService: MemberService,
     private val menuImageStorageService: MenuImageStorageService,
     private val fcmService: FcmService,
+    // S3: sellerStore() 로직을 OrderService 에서 공유하여 중복 제거
+    private val orderService: OrderService,
 ) {
 
     // ── 가게 조회/수정 ────────────────────────────────────────────────────────
@@ -45,11 +45,13 @@ class SellerAppService(
         val todayProductCount = productRepository.countByStoreAndAvailableDateAndStatus(
             store, today, ProductStatus.AVAILABLE
         )
-        val pendingOrderCount = orderRepository.findByStoreOrderByCreatedAtDesc(store)
-            .count { it.status == OrderStatus.PENDING }
+        val pendingOrderCount = orderRepository.countByStoreAndStatus(store, OrderStatus.PENDING).toInt()
         return SellerStoreResponse(
             storeId = store.storeId,
             name = store.name,
+            address = store.address,
+            phone = store.phone,
+            closingTime = store.closingTime,
             isActive = store.isActive,
             isVerified = store.isVerified,
             todayProductCount = todayProductCount,
@@ -63,7 +65,12 @@ class SellerAppService(
     fun updateStore(sellerId: Long, req: SellerUpdateStoreRequest): SellerStoreResponse {
         val store = sellerStore(sellerId)
         req.description?.let { store.description = it }
+        req.address?.takeIf { it.isNotBlank() }?.let { store.address = it }
         req.phone?.let { store.phone = it }
+        req.closingTime?.takeIf { it.isNotBlank() }?.let {
+            parsePickupTime(it, "마감 시간")
+            store.closingTime = it
+        }
         return getStore(sellerId)
     }
 
@@ -72,12 +79,12 @@ class SellerAppService(
     fun getProducts(sellerId: Long, date: LocalDate? = null, status: String? = null): List<SellerSaleItemResponse> {
         val store = sellerStore(sellerId)
         val targetDate = date ?: LocalDate.now()
-        var products = productRepository.findByStore(store)
-            .filter { it.availableDate == targetDate }
-            .sortedByDescending { it.createdAt }
-        if (status != null) {
+        val products = if (status != null) {
             val statusEnum = parseProductStatus(status)
-            products = products.filter { it.status == statusEnum }
+            productRepository.findByStoreAndAvailableDateAndStatus(store, targetDate, statusEnum)
+        } else {
+            productRepository.findByStoreAndAvailableDateOrderByCreatedAtDesc(store, targetDate)
+                .filter { it.status != ProductStatus.DELETED }
         }
         return products.map { SellerSaleItemResponse.from(it) }
     }
@@ -146,8 +153,12 @@ class SellerAppService(
         val product = productRepository.findById(productId)
             .orElseThrow { NoSuchElementException("판매 상품을 찾을 수 없습니다.") }
         require(product.store.storeId == store.storeId) { "접근 권한이 없습니다." }
-        product.status = parseProductStatus(req.status)
-        if (product.status == ProductStatus.SOLD_OUT) product.quantityRemaining = 0
+        val nextStatus = parseProductStatus(req.status)
+        if (nextStatus == ProductStatus.AVAILABLE && product.quantityRemaining <= 0) {
+            throw IllegalStateException("잔여 수량이 없는 상품은 먼저 수량을 수정해 주세요.")
+        }
+        product.status = nextStatus
+        if (nextStatus == ProductStatus.SOLD_OUT) product.quantityRemaining = 0
         return SellerSaleItemResponse.from(product)
     }
 
@@ -158,11 +169,17 @@ class SellerAppService(
             .orElseThrow { NoSuchElementException("판매 상품을 찾을 수 없습니다.") }
         require(product.store.storeId == store.storeId) { "접근 권한이 없습니다." }
 
-        req.discountPrice?.let {
-            require(it > 0) { "할인가는 1원 이상이어야 합니다." }
-            require(it < product.originalPrice) { "할인가는 정가보다 낮아야 합니다." }
-            product.discountPrice = it
+        val nextOriginalPrice = req.originalPrice ?: product.originalPrice
+        val nextDiscountPrice = req.discountPrice ?: product.discountPrice
+        req.originalPrice?.let { require(it > 0) { "정상가는 1원 이상이어야 합니다." } }
+        req.discountPrice?.let { require(it > 0) { "할인가는 1원 이상이어야 합니다." } }
+        // B8: null 병합 후에도 두 값 모두 양수이고 할인가 < 정상가 조건을 명시적으로 검증
+        require(nextDiscountPrice > 0 && nextOriginalPrice > 0 && nextDiscountPrice < nextOriginalPrice) {
+            "할인가는 정가보다 낮아야 합니다."
         }
+        product.originalPrice = nextOriginalPrice
+        product.discountPrice = nextDiscountPrice
+
         req.quantityRemaining?.let {
             require(it >= 0) { "잔여 수량은 0개 이상이어야 합니다." }
             require(it <= product.quantityTotal) { "잔여 수량은 총 수량보다 많을 수 없습니다." }
@@ -178,7 +195,11 @@ class SellerAppService(
         val product = productRepository.findById(productId)
             .orElseThrow { NoSuchElementException("판매 상품을 찾을 수 없습니다.") }
         require(product.store.storeId == store.storeId) { "접근 권한이 없습니다." }
-        product.status = ProductStatus.EXPIRED
+        val activeStatuses = setOf(OrderStatus.PENDING, OrderStatus.CONFIRMED)
+        val hasActiveOrders = orderRepository.findByStoreOrderByCreatedAtDesc(store)
+            .any { order -> order.status in activeStatuses && order.items.any { it.product.productId == product.productId } }
+        require(!hasActiveOrders) { "진행 중인 주문이 있는 상품은 취소할 수 없습니다." }
+        product.status = ProductStatus.DELETED
     }
 
     // ── 메뉴 마스터 관리 ──────────────────────────────────────────────────────
@@ -197,6 +218,7 @@ class SellerAppService(
             MenuItem(
                 store = store,
                 name = req.name,
+                description = req.description,
                 originalPrice = req.originalPrice,
                 imageUrl = imageUrl,
                 allergenInfo = req.allergenInfo,
@@ -248,23 +270,21 @@ class SellerAppService(
     // ── 사업자 정보 등록 ──────────────────────────────────────────────────────
 
     @Transactional
-    fun registerBusinessInfo(sellerId: Long, businessNumber: String): BusinessInfo {
+    fun registerBusinessInfo(sellerId: Long, businessNumber: String, businessName: String = ""): BusinessInfo {
         val member = memberService.findMember(sellerId)
-        val existing = businessInfoRepository.findByMember(member).orElse(null)
-        if (existing != null) {
-            existing.businessNumber = businessNumber
-            existing.isVerified = false
-            existing.verifiedAt = null
-            return businessInfoRepository.save(existing)
-        }
-        return businessInfoRepository.save(
+        val info = businessInfoRepository.findByMember(member).orElseGet {
             BusinessInfo(
                 member = member,
-                businessName = businessNumber,
+                businessName = businessName.ifBlank { businessNumber },
                 businessNumber = businessNumber,
                 isVerified = false,
             )
-        )
+        }
+        info.businessNumber = businessNumber
+        if (businessName.isNotBlank()) info.businessName = businessName
+        info.isVerified = false
+        info.verifiedAt = null
+        return businessInfoRepository.save(info)
     }
 
     // ── 알림 발송 ─────────────────────────────────────────────────────────────
@@ -304,7 +324,7 @@ class SellerAppService(
             .groupBy { it.body to it.createdAt.toString().take(16) }
             .map { (_, notifications) ->
                 val first = notifications.maxBy { it.createdAt }
-                SellerNotificationResponse(
+                first.createdAt to SellerNotificationResponse(
                     id = first.notificationId,
                     storeId = store.storeId,
                     storeName = store.name,
@@ -313,7 +333,8 @@ class SellerAppService(
                     recipientCount = notifications.size,
                 )
             }
-            .sortedByDescending { it.sentAt }
+            .sortedByDescending { (createdAt, _) -> createdAt }
+            .map { (_, response) -> response }
     }
 
     private fun notificationRecipients(store: Store, req: SendNotificationRequest): List<com.deuktemsiru.entity.Member> {
@@ -322,8 +343,7 @@ class SellerAppService(
         val orderMembers = orderRepository.findByStoreOrderByCreatedAtDesc(store)
             .map { it.consumer }
         val base = when (req.targetType.uppercase()) {
-            "REGULAR" -> (wishlistedMembers + orderMembers)
-            "NEARBY" -> (wishlistedMembers + orderMembers)
+            "REGULAR", "NEARBY" -> (wishlistedMembers + orderMembers)
             else -> throw IllegalArgumentException("지원하지 않는 알림 대상: ${req.targetType}")
         }
         return base
@@ -339,7 +359,6 @@ class SellerAppService(
         runCatching { LocalDate.parse(value) }
             .getOrElse { throw IllegalArgumentException("판매일 형식은 yyyy-MM-dd 이어야 합니다.") }
 
-    private fun sellerStore(sellerId: Long) =
-        storeRepository.findByOwner(memberService.findMember(sellerId))
-            .orElseThrow { NoSuchElementException("등록된 가게가 없습니다.") }
+    // S3: OrderService.sellerStore() 에 위임하여 중복 제거
+    private fun sellerStore(sellerId: Long) = orderService.sellerStore(sellerId)
 }

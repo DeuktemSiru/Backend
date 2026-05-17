@@ -91,9 +91,9 @@ class SellerMenuController(
     @DeleteMapping("/{menuItemId}")
     fun deleteMenuItem(
         @PathVariable menuItemId: Long,
-    ): ResponseEntity<Void> {
+    ): ApiResponse<Unit> {
         val sellerId = authContext.getCurrentMemberId()
         sellerAppService.deleteMenu(sellerId, menuItemId)
-        return ResponseEntity.noContent().build()
+        return ApiResponse.success(Unit, "메뉴가 삭제되었습니다.")
     }
 }

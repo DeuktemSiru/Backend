@@ -1,5 +1,6 @@
 package com.deuktemsiru.service
 
+import com.deuktemsiru.common.toEnumOrThrow
 import com.deuktemsiru.dto.CreateOrderRequest
 import com.deuktemsiru.dto.CreateOrderResponse
 import com.deuktemsiru.dto.DailySales
@@ -25,10 +26,10 @@ import com.deuktemsiru.repository.ProductRepository
 import com.deuktemsiru.repository.StoreRepository
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import java.security.SecureRandom
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.time.temporal.TemporalAdjusters
-import kotlin.math.min
 
 @Service
 @Transactional(readOnly = true)
@@ -40,6 +41,10 @@ class OrderService(
     private val memberStatsRepository: MemberStatsRepository,
     private val memberService: MemberService,
 ) {
+    private companion object {
+        private const val PICKUP_CODE_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+        private val secureRandom = SecureRandom()
+    }
 
     @Transactional
     fun createOrder(consumerId: Long, req: CreateOrderRequest): CreateOrderResponse {
@@ -47,10 +52,14 @@ class OrderService(
         require(consumer.role == MemberRole.CONSUMER) { "소비자 계정만 주문할 수 있습니다." }
         require(req.items.isNotEmpty()) { "주문 항목이 없습니다." }
 
+        // B7: 모든 상품을 먼저 잠근 후 재고 차감 (lost-update 방지)
+        val lockedProducts = req.items.associate { itemReq ->
+            itemReq.productId to productRepository.findByIdForUpdate(itemReq.productId)
+                .orElseThrow { NoSuchElementException("상품을 찾을 수 없습니다.") }
+        }
+
         // 첫 번째 상품에서 가게 결정
-        val firstProduct = productRepository.findById(
-            req.items.ifEmpty { throw IllegalArgumentException("items must not be empty") }.first().productId
-        ).orElseThrow { NoSuchElementException("상품을 찾을 수 없습니다.") }
+        val firstProduct = lockedProducts[req.items.first().productId]!!
         val store = firstProduct.store
 
         val order = Orders(
@@ -61,8 +70,7 @@ class OrderService(
 
         order.items += req.items.map { itemReq ->
             require(itemReq.quantity > 0) { "주문 수량은 1개 이상이어야 합니다." }
-            val product = productRepository.findByIdForUpdate(itemReq.productId)
-                .orElseThrow { NoSuchElementException("상품을 찾을 수 없습니다.") }
+            val product = lockedProducts[itemReq.productId]!!
             require(product.store.storeId == store.storeId) { "같은 가게의 상품만 주문할 수 있습니다." }
             require(product.status == ProductStatus.AVAILABLE) { "${product.name}은(는) 구매 불가 상태입니다." }
             require(product.quantityRemaining >= itemReq.quantity) { "${product.name} 재고가 부족합니다." }
@@ -93,15 +101,13 @@ class OrderService(
         val consumer = memberService.findMember(consumerId)
         var orders = orderRepository.findByConsumerOrderByCreatedAtDesc(consumer)
         if (statusFilter != null) {
-            val target = runCatching { OrderStatus.valueOf(statusFilter.uppercase()) }
-                .getOrElse { throw IllegalArgumentException("지원하지 않는 주문 상태: $statusFilter") }
+            val target = statusFilter.toEnumOrThrow<OrderStatus>("주문 상태")
             orders = orders.filter { it.status == target }
         }
+        // S2: 수동 fromIndex/toIndex 계산을 drop/take 로 대체
         val safeSize = size.coerceAtLeast(1).coerceAtMost(100)
         val fromIndex = page.coerceAtLeast(0) * safeSize
-        if (fromIndex >= orders.size) return emptyList()
-        return orders.subList(fromIndex, min(fromIndex + safeSize, orders.size))
-            .map { OrderListItemResponse.from(it) }
+        return orders.drop(fromIndex).take(safeSize).map { OrderListItemResponse.from(it) }
     }
 
     fun getOrder(consumerId: Long, orderId: Long): OrderDetailResponse {
@@ -136,8 +142,7 @@ class OrderService(
     ): List<OrderDetailResponse> {
         var orders = getStoreOrderEntities(sellerId)
         status?.let {
-            val target = runCatching { OrderStatus.valueOf(it.uppercase()) }
-                .getOrElse { throw IllegalArgumentException("지원하지 않는 주문 상태: $status") }
+            val target = it.toEnumOrThrow<OrderStatus>("주문 상태")
             orders = orders.filter { order -> order.status == target }
         }
         date?.let {
@@ -146,17 +151,14 @@ class OrderService(
             orders = orders.filter { order -> order.createdAt.toLocalDate() == targetDate }
         }
 
-        val safeSize = size.coerceAtLeast(1)
+        // S2: drop/take 로 페이지네이션
+        val safeSize = size.coerceAtLeast(1).coerceAtMost(100)
         val fromIndex = page.coerceAtLeast(0) * safeSize
-        if (fromIndex >= orders.size) return emptyList()
-        val toIndex = min(fromIndex + safeSize, orders.size)
-        return orders.subList(fromIndex, toIndex).map { OrderDetailResponse.from(it, latestPayment(it)) }
+        return orders.drop(fromIndex).take(safeSize).map { OrderDetailResponse.from(it, latestPayment(it)) }
     }
 
     fun getStoreOrder(sellerId: Long, orderId: Long): OrderDetailResponse {
-        val seller = memberService.findMember(sellerId)
-        val store = storeRepository.findByOwner(seller)
-            .orElseThrow { NoSuchElementException("등록된 가게가 없습니다.") }
+        val store = sellerStore(sellerId)
         val order = orderRepository.findById(orderId)
             .orElseThrow { NoSuchElementException("주문을 찾을 수 없습니다.") }
         require(order.store.storeId == store.storeId) { "접근 권한이 없습니다." }
@@ -164,19 +166,12 @@ class OrderService(
     }
 
     fun getStoreOrderEntities(sellerId: Long): List<Orders> {
-        val seller = memberService.findMember(sellerId)
-        require(seller.role == MemberRole.SELLER) { "판매자 계정만 주문을 조회할 수 있습니다." }
-        val store = storeRepository.findByOwner(seller)
-            .orElseThrow { NoSuchElementException("등록된 가게가 없습니다.") }
-        return orderRepository.findByStoreOrderByCreatedAtDesc(store)
+        return orderRepository.findByStoreOrderByCreatedAtDesc(sellerStore(sellerId))
     }
 
     @Transactional
     fun updateOrderStatus(sellerId: Long, orderId: Long, req: UpdateOrderStatusRequest): OrderDetailResponse {
-        val seller = memberService.findMember(sellerId)
-        require(seller.role == MemberRole.SELLER) { "판매자 계정만 주문 상태를 변경할 수 있습니다." }
-        val store = storeRepository.findByOwner(seller)
-            .orElseThrow { NoSuchElementException("등록된 가게가 없습니다.") }
+        val store = sellerStore(sellerId)
         val order = orderRepository.findById(orderId)
             .orElseThrow { NoSuchElementException("주문을 찾을 수 없습니다.") }
         require(order.store.storeId == store.storeId) { "접근 권한이 없습니다." }
@@ -197,48 +192,64 @@ class OrderService(
 
     @Transactional
     fun verifyPickupCode(sellerId: Long, pickupCode: String): OrderDetailResponse {
-        val seller = memberService.findMember(sellerId)
-        require(seller.role == MemberRole.SELLER) { "판매자 계정만 픽업 코드를 검증할 수 있습니다." }
-        val store = storeRepository.findByOwner(seller)
-            .orElseThrow { NoSuchElementException("등록된 가게가 없습니다.") }
+        val store = sellerStore(sellerId)
         val order = orderRepository.findByPickupCode(pickupCode)
             ?: throw NoSuchElementException("픽업 코드를 찾을 수 없습니다.")
         require(order.store.storeId == store.storeId) { "접근 권한이 없습니다." }
+        require(order.status == OrderStatus.CONFIRMED) { "픽업 대기 중인 주문만 확인할 수 있습니다." }
         return OrderDetailResponse.from(order, latestPayment(order))
     }
 
     fun getSalesStats(sellerId: Long, period: String = "DAY", targetDate: LocalDate = LocalDate.now()): SalesResponse {
-        val seller = memberService.findMember(sellerId)
-        val store = storeRepository.findByOwner(seller)
-            .orElseThrow { NoSuchElementException("등록된 가게가 없습니다.") }
-        val allOrders = orderRepository.findByStoreOrderByCreatedAtDesc(store)
-            .filter { it.status == OrderStatus.PICKED_UP }
-        val targetDayOrders = allOrders.filter { it.createdAt.toLocalDate() == targetDate }
+        val agg = aggregateSales(sellerId, period, targetDate)
         return SalesResponse(
-            totalAmount = targetDayOrders.sumOf { it.totalPrice },
-            totalOrders = targetDayOrders.size,
-            chartData = salesData(period, targetDate, allOrders),
-            topProducts = topProducts(allOrders),
+            totalAmount = agg.totalAmount,
+            totalOrders = agg.totalOrders,
+            chartData = agg.chartData,
+            topProducts = agg.topCounts.map { (name, count) -> TopProduct(productName = name, soldCount = count) },
             carbonSavedKg = 0.0,
         )
     }
 
     fun getSellerSalesStats(sellerId: Long, period: String = "DAY", targetDate: LocalDate = LocalDate.now()): SellerSalesResponse {
-        val sales = getSalesStats(sellerId, period, targetDate)
+        val agg = aggregateSales(sellerId, period, targetDate)
         return SellerSalesResponse(
-            totalAmount = sales.totalAmount,
-            totalOrders = sales.totalOrders,
-            chartData = sales.chartData,
-            topMenus = topMenus(getStoreOrderEntities(sellerId).filter { it.status == OrderStatus.PICKED_UP }),
+            totalAmount = agg.totalAmount,
+            totalOrders = agg.totalOrders,
+            chartData = agg.chartData,
+            topMenus = agg.topCounts.map { (name, count) -> TopMenu(name = name, count = count) },
         )
+    }
+
+    /** S4: getSalesStats / getSellerSalesStats 공통 집계 로직 */
+    private data class SalesAggregation(
+        val totalAmount: Int,
+        val totalOrders: Int,
+        val chartData: List<DailySales>,
+        val topCounts: List<Pair<String, Int>>,
+    )
+
+    private fun aggregateSales(sellerId: Long, period: String, targetDate: LocalDate): SalesAggregation {
+        val (_, pickedUpOrders) = fetchStoreOrders(sellerId)
+        val targetDayOrders = pickedUpOrders.filter { it.createdAt.toLocalDate() == targetDate }
+        return SalesAggregation(
+            totalAmount = targetDayOrders.sumOf { it.totalPrice },
+            totalOrders = targetDayOrders.size,
+            chartData = salesData(period, targetDate, pickedUpOrders),
+            topCounts = topProductCounts(pickedUpOrders),
+        )
+    }
+
+    private fun fetchStoreOrders(sellerId: Long): Pair<List<Orders>, List<Orders>> {
+        val store = sellerStore(sellerId)
+        val all = orderRepository.findByStoreOrderByCreatedAtDesc(store)
+        return all to all.filter { it.status == OrderStatus.PICKED_UP }
     }
 
     // ── 내부 유틸 ────────────────────────────────────────────────────────────
 
     private fun createPayment(order: Orders, requestedMethod: String?): Payment {
-        val method = runCatching {
-            PaymentMethod.valueOf((requestedMethod ?: "CASH").uppercase())
-        }.getOrElse { throw IllegalArgumentException("지원하지 않는 결제 수단입니다.") }
+        val method = (requestedMethod ?: "CASH").toEnumOrThrow<PaymentMethod>("결제 수단")
 
         if (method == PaymentMethod.SIRU) {
             require(order.consumer.isSiruLinked) { "시루 계정 연동이 필요합니다." }
@@ -260,6 +271,14 @@ class OrderService(
 
     private fun latestPayment(order: Orders): Payment? =
         paymentRepository.findFirstByOrderOrderByPaymentIdDesc(order).orElse(null)
+
+    // S3: SellerAppService 에서도 재사용할 수 있도록 internal 로 공개
+    internal fun sellerStore(sellerId: Long): com.deuktemsiru.entity.Store {
+        val seller = memberService.findMember(sellerId)
+        require(seller.role == MemberRole.SELLER) { "판매자 계정만 주문을 처리할 수 있습니다." }
+        return storeRepository.findByOwner(seller)
+            .orElseThrow { NoSuchElementException("등록된 가게가 없습니다.") }
+    }
 
     private fun cancelAndRefund(order: Orders) {
         if (order.status == OrderStatus.CANCELLED) return
@@ -360,44 +379,30 @@ class OrderService(
         return buildSalesChart(orders, buckets)
     }
 
-    private fun List<Orders>.sumOn(date: LocalDate) =
-        sumOf { if (it.createdAt.toLocalDate() == date) it.totalPrice else 0 }
-
-    private fun List<Orders>.sumBetween(start: LocalDate, end: LocalDate) =
-        sumOf {
-            val d = it.createdAt.toLocalDate()
-            if (!d.isBefore(start) && !d.isAfter(end)) it.totalPrice else 0
-        }
-
-    private fun topProducts(orders: List<Orders>): List<TopProduct> =
+    private fun topProductCounts(orders: List<Orders>): List<Pair<String, Int>> =
         orders.flatMap { it.items }
             .groupBy { it.product.productId }
             .values
-            .map { items -> TopProduct(productName = items.first().product.name, soldCount = items.sumOf { it.quantity }) }
-            .sortedByDescending { it.soldCount }
+            .map { items -> items.first().product.name to items.sumOf { it.quantity } }
+            .sortedByDescending { it.second }
             .take(3)
 
-    private fun topMenus(orders: List<Orders>): List<TopMenu> =
-        orders.flatMap { it.items }
-            .groupBy { it.product.productId }
-            .values
-            .map { items ->
-                TopMenu(
-                    name = items.first().product.name,
-                    count = items.sumOf { it.quantity },
-                )
-            }
-            .sortedByDescending { it.count }
-            .take(3)
-
+    // B2: existsByPickupCode 확인과 저장 사이의 race condition 대응 —
+    //     고유 제약 위반(DataIntegrityViolationException)이 발생할 경우 호출 측(createOrder)
+    //     트랜잭션이 롤백되므로, 여기서는 DB 에 아직 없는 코드를 반환하는 것에 집중한다.
+    //     반복 생성으로 충돌 확률을 최소화하고, 나머지는 unique constraint 에 의존한다.
     private fun generatePickupCode(): String {
-        val chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-        // 6자리를 먼저 시도하여 충돌 가능성을 최소화(36^6 ≈ 2억 가지).
-        // 극히 드문 충돌의 경우 UUID 기반 코드를 사용합니다.
-        val candidate = (1..6).map { chars.random() }.joinToString("")
-        if (!orderRepository.existsByPickupCode(candidate)) return candidate
-        val fallback = java.util.UUID.randomUUID().toString().replace("-", "").uppercase().take(8)
-        if (!orderRepository.existsByPickupCode(fallback)) return fallback
+        repeat(10) {
+            val candidate = (1..6)
+                .map { PICKUP_CODE_CHARS[secureRandom.nextInt(PICKUP_CODE_CHARS.length)] }
+                .joinToString("")
+            if (!orderRepository.existsByPickupCode(candidate)) return candidate
+        }
+        // 6자리에서 반복 충돌 시 8자리 UUID 기반 코드로 재시도
+        repeat(5) {
+            val fallback = java.util.UUID.randomUUID().toString().replace("-", "").uppercase().take(8)
+            if (!orderRepository.existsByPickupCode(fallback)) return fallback
+        }
         error("픽업 코드를 생성할 수 없습니다.")
     }
 

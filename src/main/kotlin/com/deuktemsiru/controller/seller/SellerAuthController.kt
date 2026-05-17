@@ -10,6 +10,7 @@ import org.springframework.web.bind.annotation.*
 
 data class BusinessInfoRequest(
     val businessNumber: String,
+    val businessName: String = "",
 )
 
 data class BusinessInfoResponse(
@@ -45,7 +46,7 @@ class SellerAuthController(
         @RequestBody req: BusinessInfoRequest,
     ): ResponseEntity<ApiResponse<BusinessInfoResponse>> {
         val sellerId = authContext.getCurrentMemberId()
-        val info = sellerAppService.registerBusinessInfo(sellerId, req.businessNumber)
+        val info = sellerAppService.registerBusinessInfo(sellerId, req.businessNumber, req.businessName)
         return ResponseEntity.status(HttpStatus.CREATED)
             .body(ApiResponse.created(BusinessInfoResponse.from(info), "사업자 정보 등록 성공"))
     }

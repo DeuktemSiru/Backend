@@ -134,7 +134,6 @@ class AuthController(
     /**
      * POST /api/v1/auth/siru/link
      * 시루 계정 연동
-     * 시루 계정 연동
      */
     @Operation(summary = "시루 연동", description = "시루 액세스 토큰을 검증 가능한 값으로 수신하고 계정 연동 성공 응답을 반환합니다.")
     @SwaggerApiResponses(
@@ -153,7 +152,6 @@ class AuthController(
 
     /**
      * DELETE /api/v1/auth/siru/link
-     * 시루 계정 연동 해제
      * 시루 계정 연동 해제
      */
     @Operation(summary = "시루 연동 해제", description = "현재 로그인 사용자의 시루 계정 연동을 해제합니다.")

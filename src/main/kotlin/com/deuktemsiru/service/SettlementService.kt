@@ -14,6 +14,7 @@ import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.LocalDate
 import java.time.temporal.TemporalAdjusters
+import kotlin.math.roundToInt
 
 @Service
 @Transactional(readOnly = true)
@@ -102,7 +103,7 @@ class SettlementService(
             .sumOf { it.totalPrice }
         if (totalSales == 0) return null
 
-        val fee = (totalSales * platformFeeRate).toInt()
+        val fee = (totalSales * platformFeeRate).roundToInt()
         return SettlementItem(
             settlementId = 0,
             periodStart = start.toString(),

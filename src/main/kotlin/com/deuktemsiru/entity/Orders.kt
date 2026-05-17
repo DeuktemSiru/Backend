@@ -26,7 +26,7 @@ class Orders(
     @Column(nullable = false)
     var totalPrice: Int = 0,
 
-    @Column(length = 10)
+    @Column(length = 10, unique = true)
     var pickupCode: String? = null,
 
     @CreationTimestamp

@@ -82,7 +82,8 @@ data class OrderDetailResponse(
     companion object {
         fun from(order: Orders, payment: Payment? = null): OrderDetailResponse {
             val firstProduct = order.items.firstOrNull()?.product
-            val pickupTime = firstProduct?.let { "${it.pickupStart}~${it.pickupEnd}" }
+            // B6: 주문 항목이 없을 때 NPE 방지 및 명시적 fallback 메시지 제공
+            val pickupTime = firstProduct?.let { "${it.pickupStart}~${it.pickupEnd}" } ?: "정보 없음"
             return OrderDetailResponse(
                 orderId = order.orderId,
                 orderNumber = "#${order.orderId}",

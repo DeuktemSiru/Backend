@@ -1,5 +1,9 @@
 package com.deuktemsiru.auth.service
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties
+import com.fasterxml.jackson.annotation.JsonProperty
+import com.fasterxml.jackson.databind.ObjectMapper
+import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import org.springframework.stereotype.Component
 import org.springframework.web.client.RestClient
 import org.springframework.web.client.RestClientResponseException
@@ -13,35 +17,47 @@ class KakaoAuthClient {
 
     private val restClient = RestClient.create()
 
+    // B9: raw Map 캐스팅 대신 데이터 클래스로 타입 안전하게 역직렬화
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    private data class KakaoMeResponse(
+        val id: Long,
+        @JsonProperty("kakao_account") val kakaoAccount: KakaoAccount?,
+    )
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    private data class KakaoAccount(
+        val email: String?,
+        val profile: KakaoProfile?,
+    )
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    private data class KakaoProfile(
+        val nickname: String?,
+        @JsonProperty("profile_image_url") val profileImageUrl: String?,
+    )
+
+    private val objectMapper = ObjectMapper().registerKotlinModule()
+
     fun getUserInfo(kakaoAccessToken: String): KakaoUserInfo {
-        val response: Map<*, *> = try {
-            @Suppress("UNCHECKED_CAST")
+        val json: String = try {
             restClient.get()
                 .uri("https://kapi.kakao.com/v2/user/me")
                 .header("Authorization", "Bearer $kakaoAccessToken")
                 .retrieve()
-                .body(Map::class.java) as? Map<*, *>
+                .body(String::class.java)
                 ?: throw IllegalArgumentException("카카오 사용자 정보를 가져올 수 없습니다.")
         } catch (e: RestClientResponseException) {
             throw IllegalArgumentException("유효하지 않은 카카오 액세스 토큰입니다.")
         }
 
-        // 카카오 응답은 snake_case → 직접 파싱
-        val id = when (val raw = response["id"]) {
-            is Long -> raw
-            is Int -> raw.toLong()
-            is Double -> raw.toLong()
-            else -> throw IllegalArgumentException("카카오 사용자 ID를 파싱할 수 없습니다.")
-        }
-
-        val kakaoAccount = response["kakao_account"] as? Map<*, *>
-        val profile = kakaoAccount?.get("profile") as? Map<*, *>
+        val response = runCatching { objectMapper.readValue(json, KakaoMeResponse::class.java) }
+            .getOrElse { throw IllegalArgumentException("카카오 사용자 정보를 파싱할 수 없습니다.") }
 
         return KakaoUserInfo(
-            id = id,
-            email = kakaoAccount?.get("email") as? String,
-            nickname = profile?.get("nickname") as? String,
-            profileImageUrl = profile?.get("profile_image_url") as? String,
+            id = response.id,
+            email = response.kakaoAccount?.email,
+            nickname = response.kakaoAccount?.profile?.nickname,
+            profileImageUrl = response.kakaoAccount?.profile?.profileImageUrl,
         )
     }
 }

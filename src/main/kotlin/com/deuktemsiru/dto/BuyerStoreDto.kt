@@ -13,18 +13,39 @@ data class StoreListItemResponse(
     val ratingAvg: Double,
     val reviewCount: Int,
     val availableProductCount: Int,
+    val representativeOriginalPrice: Int,
+    val representativeDiscountPrice: Int,
+    val representativeDiscountRate: Int,
+    val representativePickupEnd: String?,
 ) {
     companion object {
-        fun from(store: Store, availableProductCount: Int, distanceM: Int = 0) = StoreListItemResponse(
-            storeId = store.storeId,
-            name = store.name,
-            thumbnailUrl = store.thumbnailUrl,
-            distanceM = distanceM,
-            category = store.categories.firstOrNull()?.category?.name ?: "OTHER",
-            ratingAvg = store.ratingAvg,
-            reviewCount = store.reviewCount,
-            availableProductCount = availableProductCount,
-        )
+        fun from(
+            store: Store,
+            availableProductCount: Int,
+            distanceM: Int = 0,
+            representativeProduct: Product? = null,
+        ): StoreListItemResponse {
+            val originalPrice = representativeProduct?.originalPrice ?: 0
+            val discountPrice = representativeProduct?.discountPrice ?: 0
+            return StoreListItemResponse(
+                storeId = store.storeId,
+                name = store.name,
+                thumbnailUrl = store.thumbnailUrl,
+                distanceM = distanceM,
+                category = store.categories.firstOrNull()?.category?.name ?: "OTHER",
+                ratingAvg = store.ratingAvg,
+                reviewCount = store.reviewCount,
+                availableProductCount = availableProductCount,
+                representativeOriginalPrice = originalPrice,
+                representativeDiscountPrice = discountPrice,
+                representativeDiscountRate = if (originalPrice > 0) {
+                    ((originalPrice - discountPrice) * 100 / originalPrice).coerceAtLeast(0)
+                } else {
+                    0
+                },
+                representativePickupEnd = representativeProduct?.pickupEnd?.toString(),
+            )
+        }
     }
 }
 
@@ -32,8 +53,10 @@ data class StoreListItemResponse(
 data class StoreProductItem(
     val productId: Long,
     val name: String,
+    val originalPrice: Int,
     val discountPrice: Int,
     val quantityRemaining: Int,
+    val pickupStart: String,
     val pickupEnd: String,
     val status: String,
 ) {
@@ -41,8 +64,10 @@ data class StoreProductItem(
         fun from(product: Product) = StoreProductItem(
             productId = product.productId,
             name = product.name,
+            originalPrice = product.originalPrice,
             discountPrice = product.discountPrice,
             quantityRemaining = product.quantityRemaining,
+            pickupStart = product.pickupStart.toString(),
             pickupEnd = product.pickupEnd.toString(),
             status = product.status.name,
         )

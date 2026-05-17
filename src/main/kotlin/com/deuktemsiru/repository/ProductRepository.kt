@@ -18,6 +18,7 @@ interface StoreProductCount {
 
 interface ProductRepository : JpaRepository<Product, Long> {
     fun findByStore(store: Store): List<Product>
+    fun findByStoreAndAvailableDateOrderByCreatedAtDesc(store: Store, date: LocalDate): List<Product>
     fun findByStoreAndStatus(store: Store, status: ProductStatus): List<Product>
     fun findByStoreInAndAvailableDateAndStatus(stores: List<Store>, date: LocalDate, status: ProductStatus): List<Product>
     fun findByStoreAndAvailableDateAndStatus(store: Store, date: LocalDate, status: ProductStatus): List<Product>
@@ -25,7 +26,7 @@ interface ProductRepository : JpaRepository<Product, Long> {
 
     @Query(
         """
-        select p.store.storeId as storeId, count(p) as productCount
+        select p.store.storeId as storeId, coalesce(sum(p.quantityRemaining), 0) as productCount
         from Product p
         where p.store.storeId in :storeIds
           and p.availableDate = :date
