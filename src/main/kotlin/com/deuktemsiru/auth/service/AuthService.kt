@@ -6,6 +6,8 @@ import com.deuktemsiru.auth.dto.MemberSummary
 import com.deuktemsiru.auth.dto.TokenRefreshRequest
 import com.deuktemsiru.auth.dto.TokenResponse
 import com.deuktemsiru.common.UnauthorizedException
+import com.deuktemsiru.common.nowDateTime
+import com.deuktemsiru.common.orNotFound
 import com.deuktemsiru.entity.Member
 import com.deuktemsiru.entity.MemberProvider
 import com.deuktemsiru.entity.MemberRole
@@ -19,6 +21,7 @@ import org.springframework.context.annotation.Lazy
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Propagation
 import org.springframework.transaction.annotation.Transactional
+import java.time.Clock
 import java.security.MessageDigest
 import java.time.LocalDateTime
 import java.util.Base64
@@ -31,6 +34,7 @@ class AuthService(
     private val refreshTokenRepository: RefreshTokenRepository,
     private val fcmTokenRepository: FcmTokenRepository,
     private val jwtService: JwtService,
+    private val clock: Clock,
 ) {
     // 자기 참조: REQUIRES_NEW 트랜잭션 메서드를 프록시를 통해 호출하기 위해 필요
     @Lazy @Autowired private lateinit var self: AuthService
@@ -68,12 +72,7 @@ class AuthService(
         member.nickname = nickname
         member.profileImageUrl = userInfo.profileImageUrl
 
-        val accessToken = jwtService.createAccessToken(member)
-        val refreshToken = jwtService.createRefreshToken(member)
-
-        saveRefreshToken(member, refreshToken)
-
-        return Pair(buildLoginResponse(member, accessToken, refreshToken), isNewMember)
+        return Pair(issueTokens(member), isNewMember)
     }
 
     /**
@@ -101,11 +100,7 @@ class AuthService(
 
         val member = findOrCreateDebugMember(debugUser)
 
-        val accessToken = jwtService.createAccessToken(member)
-        val refreshToken = jwtService.createRefreshToken(member)
-        saveRefreshToken(member, refreshToken)
-
-        return buildLoginResponse(member, accessToken, refreshToken)
+        return issueTokens(member)
     }
 
     @Transactional
@@ -119,11 +114,7 @@ class AuthService(
             .filter { it.role == MemberRole.SELLER }
             .orElseThrow { NoSuchElementException("판매자 디버그 계정을 찾을 수 없습니다.") }
 
-        val accessToken = jwtService.createAccessToken(seller)
-        val refreshToken = jwtService.createRefreshToken(seller)
-        saveRefreshToken(seller, refreshToken)
-
-        return buildLoginResponse(seller, accessToken, refreshToken)
+        return issueTokens(seller)
     }
 
     /**
@@ -142,7 +133,7 @@ class AuthService(
             .orElseThrow { UnauthorizedException("이미 로그아웃된 리프레시 토큰입니다.") }
 
         // 3) DB 만료 시각 재확인
-        if (storedToken.expiredAt.isBefore(LocalDateTime.now())) {
+        if (storedToken.expiredAt.isBefore(now())) {
             // REQUIRES_NEW로 별도 커밋 — 외부 트랜잭션 롤백과 무관하게 폐기 상태를 저장
             self.revokeExpiredToken(storedToken.refreshTokenId)
             throw UnauthorizedException("만료된 리프레시 토큰입니다.")
@@ -159,7 +150,7 @@ class AuthService(
     @Transactional
     fun logout(memberId: Long) {
         val member = memberRepository.findById(memberId)
-            .orElseThrow { NoSuchElementException("사용자를 찾을 수 없습니다.") }
+            .orNotFound("사용자를 찾을 수 없습니다.")
         refreshTokenRepository.revokeAllByMember(member)
         fcmTokenRepository.deactivateAllByMember(member)
     }
@@ -192,11 +183,18 @@ class AuthService(
             }
 
     private fun saveRefreshToken(member: Member, token: String) {
-        val expiredAt = LocalDateTime.now()
+        val expiredAt = now()
             .plusSeconds(jwtService.refreshTokenExpirationSeconds)
         refreshTokenRepository.save(
             RefreshToken(member = member, token = hashToken(token), expiredAt = expiredAt)
         )
+    }
+
+    private fun issueTokens(member: Member): LoginResponse {
+        val accessToken = jwtService.createAccessToken(member)
+        val refreshToken = jwtService.createRefreshToken(member)
+        saveRefreshToken(member, refreshToken)
+        return buildLoginResponse(member, accessToken, refreshToken)
     }
 
     /** 리프레시 토큰을 SHA-256으로 해싱하여 DB에 평문이 저장되지 않도록 합니다. */
@@ -224,4 +222,6 @@ class AuthService(
         val nickname: String,
         val role: MemberRole,
     )
+
+    private fun now(): LocalDateTime = clock.nowDateTime()
 }

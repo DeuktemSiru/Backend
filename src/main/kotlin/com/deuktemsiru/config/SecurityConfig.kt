@@ -33,14 +33,16 @@ class SecurityConfig(
                     "/swagger-ui/**",
                     "/v3/api-docs/**",
                     "/actuator/health",
-                    "/actuator/prometheus",
                     // 정적 업로드 파일
                     "/uploads/**",
                 )
                 if (devEndpointsEnabled) {
                     publicMatchers += "/api/v1/auth/debug/login"
+                    publicMatchers += "/actuator/prometheus"
                 }
                 auth.requestMatchers(*publicMatchers.toTypedArray()).permitAll()
+                    .requestMatchers("/api/v1/sellers/**").hasRole("SELLER")
+                    .requestMatchers("/api/v1/cart/**", "/api/v1/orders/**", "/api/v1/wishlist/**").hasRole("CONSUMER")
                     .anyRequest().authenticated()
             }
             .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter::class.java)

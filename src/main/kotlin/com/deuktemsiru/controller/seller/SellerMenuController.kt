@@ -1,12 +1,14 @@
 package com.deuktemsiru.controller.seller
 
 import com.deuktemsiru.common.ApiResponse
+import com.deuktemsiru.common.created
+import com.deuktemsiru.common.ok
+import com.deuktemsiru.dto.SellerMenuItemForm
 import com.deuktemsiru.dto.SellerMenuItemResponse
 import com.deuktemsiru.dto.SellerMenuItemRequest
 import com.deuktemsiru.dto.SellerMenuItemUpdateRequest
-import com.deuktemsiru.security.AuthContext
+import com.deuktemsiru.security.CurrentMemberId
 import com.deuktemsiru.service.SellerAppService
-import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.*
@@ -18,7 +20,6 @@ import org.springframework.web.multipart.MultipartFile
 @RequestMapping("/api/v1/sellers/menu-items")
 class SellerMenuController(
     private val sellerAppService: SellerAppService,
-    private val authContext: AuthContext,
 ) {
 
     /**
@@ -26,9 +27,8 @@ class SellerMenuController(
      * 내 가게 메뉴 목록 조회
      */
     @GetMapping
-    fun getMenuItems(): ApiResponse<List<SellerMenuItemResponse>> {
-        val sellerId = authContext.getCurrentMemberId()
-        return ApiResponse.success(sellerAppService.getMenus(sellerId))
+    fun getMenuItems(@CurrentMemberId sellerId: Long): ApiResponse<List<SellerMenuItemResponse>> {
+        return ok(sellerAppService.getMenus(sellerId))
     }
 
     /**
@@ -37,12 +37,10 @@ class SellerMenuController(
      */
     @PostMapping(consumes = [MediaType.APPLICATION_JSON_VALUE])
     fun addMenuItem(
+        @CurrentMemberId sellerId: Long,
         @RequestBody req: SellerMenuItemRequest,
     ): ResponseEntity<ApiResponse<SellerMenuItemResponse>> {
-        val sellerId = authContext.getCurrentMemberId()
-        val menu = sellerAppService.createMenu(sellerId, req)
-        return ResponseEntity.status(HttpStatus.CREATED)
-            .body(ApiResponse.created(menu, "메뉴가 등록되었습니다."))
+        return createdMenu(sellerAppService.createMenu(sellerId, req))
     }
 
     /**
@@ -52,23 +50,11 @@ class SellerMenuController(
      */
     @PostMapping(consumes = [MediaType.MULTIPART_FORM_DATA_VALUE])
     fun addMenuItemWithImage(
-        @RequestPart name: String,
-        @RequestPart originalPrice: String,
-        @RequestPart(required = false) description: String?,
-        @RequestPart(required = false) allergenInfo: String?,
+        @CurrentMemberId sellerId: Long,
+        @ModelAttribute form: SellerMenuItemForm,
         @RequestPart(required = false) image: MultipartFile?,
     ): ResponseEntity<ApiResponse<SellerMenuItemResponse>> {
-        val sellerId = authContext.getCurrentMemberId()
-        val menu = sellerAppService.createMenuWithImage(
-            sellerId = sellerId,
-            name = name,
-            description = description,
-            originalPrice = originalPrice.toInt(),
-            allergenInfo = allergenInfo,
-            image = image,
-        )
-        return ResponseEntity.status(HttpStatus.CREATED)
-            .body(ApiResponse.created(menu, "메뉴가 등록되었습니다."))
+        return createdMenu(sellerAppService.createMenuWithImage(sellerId, form.toRequest(), image))
     }
 
     /**
@@ -77,11 +63,11 @@ class SellerMenuController(
      */
     @PatchMapping("/{menuItemId}")
     fun updateMenuItem(
+        @CurrentMemberId sellerId: Long,
         @PathVariable menuItemId: Long,
         @RequestBody req: SellerMenuItemUpdateRequest,
     ): ApiResponse<SellerMenuItemResponse> {
-        val sellerId = authContext.getCurrentMemberId()
-        return ApiResponse.success(sellerAppService.updateMenu(sellerId, menuItemId, req))
+        return ok(sellerAppService.updateMenu(sellerId, menuItemId, req))
     }
 
     /**
@@ -90,10 +76,13 @@ class SellerMenuController(
      */
     @DeleteMapping("/{menuItemId}")
     fun deleteMenuItem(
+        @CurrentMemberId sellerId: Long,
         @PathVariable menuItemId: Long,
     ): ApiResponse<Unit> {
-        val sellerId = authContext.getCurrentMemberId()
         sellerAppService.deleteMenu(sellerId, menuItemId)
-        return ApiResponse.success(Unit, "메뉴가 삭제되었습니다.")
+        return ok(Unit, "메뉴가 삭제되었습니다.")
     }
+
+    private fun createdMenu(menu: SellerMenuItemResponse): ResponseEntity<ApiResponse<SellerMenuItemResponse>> =
+        created(menu, "메뉴가 등록되었습니다.")
 }

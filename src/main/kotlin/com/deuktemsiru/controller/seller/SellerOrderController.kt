@@ -2,16 +2,11 @@ package com.deuktemsiru.controller.seller
 
 import com.deuktemsiru.common.ApiResponse
 import com.deuktemsiru.dto.OrderDetailResponse
+import com.deuktemsiru.dto.PickupConfirmRequest
 import com.deuktemsiru.dto.UpdateOrderStatusRequest
-import com.deuktemsiru.entity.OrderStatus
-import com.deuktemsiru.security.AuthContext
+import com.deuktemsiru.security.CurrentMemberId
 import com.deuktemsiru.service.OrderService
-import org.springframework.data.domain.PageRequest
 import org.springframework.web.bind.annotation.*
-
-// ── Request DTOs ──────────────────────────────────────────────────────────────
-
-data class PickupConfirmRequest(val pickupCode: String)
 
 // ── Controller ────────────────────────────────────────────────────────────────
 
@@ -19,7 +14,6 @@ data class PickupConfirmRequest(val pickupCode: String)
 @RequestMapping("/api/v1/sellers/orders")
 class SellerOrderController(
     private val orderService: OrderService,
-    private val authContext: AuthContext,
 ) {
 
     /**
@@ -28,12 +22,12 @@ class SellerOrderController(
      */
     @GetMapping
     fun getStoreOrders(
+        @CurrentMemberId sellerId: Long,
         @RequestParam(required = false) status: String?,
         @RequestParam(required = false) date: String?,
         @RequestParam(defaultValue = "0") page: Int,
         @RequestParam(defaultValue = "20") size: Int,
     ): ApiResponse<List<OrderDetailResponse>> {
-        val sellerId = authContext.getCurrentMemberId()
         val orders = orderService.getStoreOrders(sellerId, status, date, page, size)
         return ApiResponse.success(orders)
     }
@@ -44,9 +38,9 @@ class SellerOrderController(
      */
     @GetMapping("/{orderId}")
     fun getStoreOrder(
+        @CurrentMemberId sellerId: Long,
         @PathVariable orderId: Long,
     ): ApiResponse<OrderDetailResponse> {
-        val sellerId = authContext.getCurrentMemberId()
         val order = orderService.getStoreOrder(sellerId, orderId)
         return ApiResponse.success(order)
     }
@@ -57,13 +51,11 @@ class SellerOrderController(
      */
     @PatchMapping("/{orderId}/confirm")
     fun confirmPickup(
+        @CurrentMemberId sellerId: Long,
         @PathVariable orderId: Long,
         @RequestBody req: PickupConfirmRequest,
     ): ApiResponse<OrderDetailResponse> {
-        val sellerId = authContext.getCurrentMemberId()
-        val verified = orderService.verifyPickupCode(sellerId, req.pickupCode)
-        require(verified.orderId == orderId) { "주문과 픽업 코드가 일치하지 않습니다." }
-        val order = orderService.updateOrderStatus(sellerId, orderId, UpdateOrderStatusRequest(OrderStatus.PICKED_UP))
+        val order = orderService.confirmPickupCode(sellerId, orderId, req.pickupCode)
         return ApiResponse.success(order)
     }
 
@@ -73,10 +65,10 @@ class SellerOrderController(
      */
     @PatchMapping("/{orderId}/status")
     fun updateOrderStatus(
+        @CurrentMemberId sellerId: Long,
         @PathVariable orderId: Long,
         @RequestBody req: UpdateOrderStatusRequest,
     ): ApiResponse<OrderDetailResponse> {
-        val sellerId = authContext.getCurrentMemberId()
         val order = orderService.updateOrderStatus(sellerId, orderId, req)
         return ApiResponse.success(order)
     }
@@ -87,13 +79,12 @@ class SellerOrderController(
 @RequestMapping("/api/v1/sellers/pickup")
 class SellerPickupController(
     private val orderService: OrderService,
-    private val authContext: AuthContext,
 ) {
     @GetMapping("/verify")
     fun verifyPickupCode(
+        @CurrentMemberId sellerId: Long,
         @RequestParam code: String,
     ): ApiResponse<OrderDetailResponse> {
-        val sellerId = authContext.getCurrentMemberId()
         return ApiResponse.success(orderService.verifyPickupCode(sellerId, code))
     }
 }

@@ -9,6 +9,7 @@ import com.deuktemsiru.repository.MemberRepository
 import com.deuktemsiru.repository.MemberStatsRepository
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import java.time.Clock
 import java.time.LocalDateTime
 
 @Service
@@ -16,9 +17,13 @@ import java.time.LocalDateTime
 class MemberService(
     private val memberRepository: MemberRepository,
     private val memberStatsRepository: MemberStatsRepository,
+    private val clock: Clock,
 ) {
     fun findMember(memberId: Long): Member =
         memberRepository.findById(memberId).orElseThrow { NoSuchElementException("사용자를 찾을 수 없습니다.") }
+
+    fun findMemberForUpdate(memberId: Long): Member =
+        memberRepository.findByIdForUpdate(memberId).orElseThrow { NoSuchElementException("사용자를 찾을 수 없습니다.") }
 
     fun findByEmail(email: String): Member =
         memberRepository.findByEmail(email).orElseThrow { NoSuchElementException("사용자를 찾을 수 없습니다.") }
@@ -37,7 +42,7 @@ class MemberService(
     @Transactional
     fun deleteAccount(memberId: Long) {
         val member = findMember(memberId)
-        member.deletedAt = LocalDateTime.now()
+        member.deletedAt = LocalDateTime.now(clock)
         member.status = false
     }
 
@@ -56,14 +61,9 @@ class MemberService(
     @Transactional
     fun updateNotificationSettings(memberId: Long, req: UpdateNotificationSettingsRequest): NotificationSettingsResponse {
         val member = findMember(memberId)
-        if (member.role == MemberRole.CONSUMER) {
-            req.newProduct?.let { member.notifNewProduct = it }
-            req.pickupReminder?.let { member.notifPickupReminder = it }
-            req.orderConfirmed?.let { member.notifOrderConfirmed = it }
-        } else {
-            req.newOrder?.let { member.notifNewOrder = it }
-            req.pickupComplete?.let { member.notifPickupComplete = it }
-            req.soldOut?.let { member.notifSoldOut = it }
+        when (member.role) {
+            MemberRole.CONSUMER -> member.applyConsumerNotificationSettings(req)
+            MemberRole.SELLER -> member.applySellerNotificationSettings(req)
         }
         req.event?.let { member.notifEvent = it }
         return NotificationSettingsResponse.from(member)
@@ -84,5 +84,17 @@ class MemberService(
         member.isSiruLinked = false
         member.siruBalance = 0
         return member
+    }
+
+    private fun Member.applyConsumerNotificationSettings(req: UpdateNotificationSettingsRequest) {
+        req.newProduct?.let { notifNewProduct = it }
+        req.pickupReminder?.let { notifPickupReminder = it }
+        req.orderConfirmed?.let { notifOrderConfirmed = it }
+    }
+
+    private fun Member.applySellerNotificationSettings(req: UpdateNotificationSettingsRequest) {
+        req.newOrder?.let { notifNewOrder = it }
+        req.pickupComplete?.let { notifPickupComplete = it }
+        req.soldOut?.let { notifSoldOut = it }
     }
 }

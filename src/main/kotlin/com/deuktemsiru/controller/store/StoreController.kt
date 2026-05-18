@@ -3,7 +3,9 @@ package com.deuktemsiru.controller.store
 import com.deuktemsiru.common.ApiResponse
 import com.deuktemsiru.dto.StoreDetailResponse
 import com.deuktemsiru.dto.StoreListItemResponse
+import com.deuktemsiru.security.JwtUser
 import com.deuktemsiru.service.StoreService
+import org.springframework.security.core.context.SecurityContextHolder
 import org.springframework.web.bind.annotation.*
 
 data class StoreListResponse(val stores: List<StoreListItemResponse>, val hasNext: Boolean)
@@ -31,7 +33,7 @@ class StoreController(
         val stores = storeService.getStoreListBuyer(
             category = category,
             keyword = keyword,
-            memberId = null,
+            memberId = currentMemberId(),
             latitude = latitude,
             longitude = longitude,
             radius = radius,
@@ -50,6 +52,9 @@ class StoreController(
     fun getStore(
         @PathVariable storeId: Long,
     ): ApiResponse<StoreDetailResponse> {
-        return ApiResponse.success(storeService.getStoreDetailBuyer(storeId))
+        return ApiResponse.success(storeService.getStoreDetailBuyer(storeId, currentMemberId()))
     }
+
+    private fun currentMemberId(): Long? =
+        (SecurityContextHolder.getContext().authentication?.principal as? JwtUser)?.memberId
 }

@@ -1,11 +1,12 @@
 package com.deuktemsiru.service
 
+import com.deuktemsiru.common.orNotFound
+import com.deuktemsiru.common.safePage
 import com.deuktemsiru.entity.OrderStatus
 import com.deuktemsiru.entity.Review
 import com.deuktemsiru.repository.OrderRepository
 import com.deuktemsiru.repository.ReviewRepository
 import com.deuktemsiru.repository.StoreRepository
-import org.springframework.data.domain.PageRequest
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.LocalDateTime
@@ -23,7 +24,17 @@ data class ReviewItem(
     val rating: Int,
     val content: String?,
     val createdAt: LocalDateTime,
-)
+) {
+    companion object {
+        fun from(review: Review) = ReviewItem(
+            reviewId = review.reviewId,
+            nickname = review.consumer.nickname,
+            rating = review.rating,
+            content = review.content,
+            createdAt = review.createdAt,
+        )
+    }
+}
 
 data class StoreReviewListResponse(
     val reviews: List<ReviewItem>,
@@ -46,7 +57,7 @@ class ReviewService(
 
         val consumer = memberService.findMember(consumerId)
         val order = orderRepository.findById(req.orderId)
-            .orElseThrow { NoSuchElementException("주문을 찾을 수 없습니다.") }
+            .orNotFound("주문을 찾을 수 없습니다.")
 
         require(order.consumer.memberId == consumerId) { "본인의 주문에만 리뷰를 작성할 수 있습니다." }
         require(order.store.storeId == req.storeId) { "주문한 가게에만 리뷰를 작성할 수 있습니다." }
@@ -70,19 +81,11 @@ class ReviewService(
 
     fun getStoreReviews(storeId: Long, page: Int, size: Int): StoreReviewListResponse {
         val store = storeRepository.findById(storeId)
-            .orElseThrow { NoSuchElementException("가게를 찾을 수 없습니다.") }
-        val pageable = PageRequest.of(page, size)
+            .orNotFound("가게를 찾을 수 없습니다.")
+        val pageable = safePage(page, size)
         val reviews = reviewRepository.findByStoreAndIsDeletedFalseOrderByCreatedAtDesc(store, pageable)
         return StoreReviewListResponse(
-            reviews = reviews.map {
-                ReviewItem(
-                    reviewId = it.reviewId,
-                    nickname = it.consumer.nickname,
-                    rating = it.rating,
-                    content = it.content,
-                    createdAt = it.createdAt,
-                )
-            },
+            reviews = reviews.map { ReviewItem.from(it) },
             ratingAvg = store.ratingAvg,
             reviewCount = store.reviewCount,
         )
@@ -91,7 +94,7 @@ class ReviewService(
     @Transactional
     fun deleteReview(reviewId: Long, consumerId: Long) {
         val review = reviewRepository.findById(reviewId)
-            .orElseThrow { NoSuchElementException("리뷰를 찾을 수 없습니다.") }
+            .orNotFound("리뷰를 찾을 수 없습니다.")
         require(review.consumer.memberId == consumerId) { "본인의 리뷰만 삭제할 수 있습니다." }
         require(!review.isDeleted) { "이미 삭제된 리뷰입니다." }
         review.isDeleted = true
@@ -105,7 +108,8 @@ class ReviewService(
     /** 가게의 리뷰 수와 평균 평점을 DB에서 직접 집계하여 Store 엔티티에 반영합니다.
      *  항상 @Transactional 컨텍스트를 가진 메서드(createReview/deleteReview)에서만 호출됩니다. */
     private fun updateStoreRating(store: com.deuktemsiru.entity.Store) {
-        store.reviewCount = reviewRepository.countByStoreAndIsDeletedFalse(store).toInt()
-        store.ratingAvg = reviewRepository.findAverageRatingByStore(store) ?: 0.0
+        val summary = reviewRepository.summarizeRatingByStore(store)
+        store.reviewCount = summary.reviewCount.toInt()
+        store.ratingAvg = summary.ratingAvg ?: 0.0
     }
 }

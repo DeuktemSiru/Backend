@@ -8,7 +8,7 @@ import com.deuktemsiru.auth.dto.TokenResponse
 import com.deuktemsiru.auth.service.AuthService
 import com.deuktemsiru.common.ApiResponse
 import com.deuktemsiru.dto.MemberResponse
-import com.deuktemsiru.security.AuthContext
+import com.deuktemsiru.security.CurrentMemberId
 import com.deuktemsiru.service.MemberService
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.tags.Tag
@@ -32,7 +32,6 @@ data class SiruLinkRequest(val siruAccessToken: String)
 class AuthController(
     private val authService: AuthService,
     private val memberService: MemberService,
-    private val authContext: AuthContext,
     @Value("\${app.security.dev-endpoints-enabled:false}")
     private val devEndpointsEnabled: Boolean,
 ) {
@@ -58,8 +57,7 @@ class AuthController(
     ): ResponseEntity<ApiResponse<LoginResponse>> {
         val (response, isNew) = authService.kakaoLogin(req)
         return if (isNew) {
-            ResponseEntity.status(HttpStatus.CREATED)
-                .body(ApiResponse.created(response, "회원가입 후 로그인 성공"))
+            ApiResponse.createdEntity(response, "회원가입 후 로그인 성공")
         } else {
             ResponseEntity.ok(ApiResponse.success(response, "로그인 성공"))
         }
@@ -125,8 +123,7 @@ class AuthController(
         ],
     )
     @PostMapping("/logout")
-    fun logout(): ApiResponse<Unit> {
-        val memberId = authContext.getCurrentMemberId()
+    fun logout(@CurrentMemberId memberId: Long): ApiResponse<Unit> {
         authService.logout(memberId)
         return ApiResponse.success(Unit, "로그아웃 성공")
     }
@@ -144,9 +141,10 @@ class AuthController(
     )
     @PostMapping("/siru/link")
     fun linkSiru(
+        @CurrentMemberId memberId: Long,
         @RequestBody req: SiruLinkRequest,
     ): ApiResponse<MemberResponse> {
-        val member = memberService.linkSiru(authContext.getCurrentMemberId(), req.siruAccessToken)
+        val member = memberService.linkSiru(memberId, req.siruAccessToken)
         return ApiResponse.success(MemberResponse.from(member), "시루 계정이 연동되었습니다.")
     }
 
@@ -162,8 +160,8 @@ class AuthController(
         ],
     )
     @DeleteMapping("/siru/link")
-    fun unlinkSiru(): ApiResponse<MemberResponse> {
-        val member = memberService.unlinkSiru(authContext.getCurrentMemberId())
+    fun unlinkSiru(@CurrentMemberId memberId: Long): ApiResponse<MemberResponse> {
+        val member = memberService.unlinkSiru(memberId)
         return ApiResponse.success(MemberResponse.from(member), "시루 계정 연동이 해제되었습니다.")
     }
 }

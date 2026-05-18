@@ -15,7 +15,7 @@ class FcmToken(
     @JoinColumn(name = "member_id", nullable = false)
     var member: Member,
 
-    @Column(nullable = false, length = 500)
+    @Column(nullable = false, length = 500, unique = true)
     var token: String,
 
     @Column(length = 100)

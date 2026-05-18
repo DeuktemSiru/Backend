@@ -5,7 +5,12 @@ import org.hibernate.annotations.CreationTimestamp
 import java.time.LocalDateTime
 
 @Entity
-@Table(name = "review")
+@Table(
+    name = "review",
+    uniqueConstraints = [
+        UniqueConstraint(name = "uk_review_consumer_order", columnNames = ["consumer_id", "order_id"]),
+    ],
+)
 class Review(
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
     val reviewId: Long = 0,

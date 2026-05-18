@@ -66,6 +66,8 @@ data class OrderItemDetailResponse(
     }
 }
 
+fun OrderItem.toDetailResponse() = OrderItemDetailResponse.from(this)
+
 data class OrderDetailResponse(
     val orderId: Long,
     val orderNumber: String,
@@ -133,6 +135,8 @@ data class UpdateOrderStatusRequest(
     val status: OrderStatus,
 )
 
+data class PickupConfirmRequest(val pickupCode: String)
+
 data class DailySales(val date: String, val amount: Int)
 data class TopProduct(val productName: String, val soldCount: Int)
 data class TopMenu(val name: String, val count: Int)
@@ -151,11 +155,3 @@ data class SellerSalesResponse(
     val chartData: List<DailySales>,
     val topMenus: List<TopMenu>,
 )
-
-internal fun categoryEmoji(category: String?) = when (category) {
-    "BAKERY" -> "🥐"
-    "CAFE" -> "☕"
-    "RESTAURANT" -> "🍱"
-    "GROCERY" -> "🥦"
-    else -> "🍽️"
-}

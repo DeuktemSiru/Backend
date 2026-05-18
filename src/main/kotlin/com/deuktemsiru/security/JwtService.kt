@@ -20,6 +20,7 @@ class JwtService(
     @Value("\${app.jwt.secret}") private val secret: String,
     @Value("\${app.jwt.access-token-expiration-seconds:1800}") val accessTokenExpirationSeconds: Long,
     @Value("\${app.jwt.refresh-token-expiration-seconds:1209600}") val refreshTokenExpirationSeconds: Long,
+    @Value("\${spring.profiles.active:}") private val activeProfiles: String,
     private val objectMapper: ObjectMapper,
 ) {
 
@@ -29,6 +30,9 @@ class JwtService(
     fun validateSecret() {
         val devDefault = "deuktemsiru-dev-secret-key-must-be-changed-in-production"
         if (secret == devDefault) {
+            require(!activeProfiles.split(",").map { it.trim() }.contains("prod")) {
+                "운영 환경에서는 APP_JWT_SECRET 환경변수를 반드시 교체해야 합니다."
+            }
             log.warn("⚠️  JWT secret이 기본 개발용 값입니다. 운영 환경에서는 APP_JWT_SECRET 환경변수를 반드시 교체하세요!")
         }
         require(secret.length >= 32) { "JWT secret은 최소 32자 이상이어야 합니다. (현재: ${secret.length}자)" }

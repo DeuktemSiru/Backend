@@ -77,3 +77,9 @@ class Product(
 )
 
 enum class ProductStatus { AVAILABLE, SOLD_OUT, EXPIRED, DELETED }
+
+fun Product.requirePurchasableOn(date: LocalDate, quantity: Int? = null) {
+    require(status == ProductStatus.AVAILABLE) { "${name}은(는) 구매 불가 상태입니다." }
+    require(availableDate == date) { "${name}은(는) 오늘 구매 가능한 상품이 아닙니다." }
+    quantity?.let { require(quantityRemaining >= it) { "${name} 재고가 부족합니다." } }
+}

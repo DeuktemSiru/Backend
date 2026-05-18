@@ -1,43 +1,14 @@
 package com.deuktemsiru.controller.cart
 
 import com.deuktemsiru.common.ApiResponse
-import com.deuktemsiru.security.AuthContext
+import com.deuktemsiru.dto.CartAddRequest
+import com.deuktemsiru.dto.CartItem
+import com.deuktemsiru.dto.CartResponse
+import com.deuktemsiru.dto.CartUpdateRequest
+import com.deuktemsiru.security.CurrentMemberId
 import com.deuktemsiru.service.CartService
-import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.*
-
-// ── Request / Response DTOs ───────────────────────────────────────────────────
-
-data class CartAddRequest(
-    val productId: Long,
-    val quantity: Int,
-)
-
-data class CartUpdateRequest(
-    val quantity: Int,
-)
-
-data class CartItem(
-    val cartItemId: Long,
-    val productId: Long,
-    val productName: String,
-    val storeId: Long,
-    val storeName: String,
-    val storeLatitude: Double,
-    val storeLongitude: Double,
-    val originalPrice: Int,
-    val discountPrice: Int,
-    val pickupStart: String,
-    val pickupEnd: String,
-    val quantity: Int,
-    val imageUrl: String?,
-)
-
-data class CartResponse(
-    val items: List<CartItem>,
-    val totalPrice: Int,
-)
 
 // ── Controller ────────────────────────────────────────────────────────────────
 
@@ -45,7 +16,6 @@ data class CartResponse(
 @RequestMapping("/api/v1/cart")
 class CartController(
     private val cartService: CartService,
-    private val authContext: AuthContext,
 ) {
 
     /**
@@ -54,11 +24,11 @@ class CartController(
      */
     @PostMapping
     fun addToCart(
+        @CurrentMemberId memberId: Long,
         @RequestBody req: CartAddRequest,
     ): ResponseEntity<ApiResponse<CartItem>> {
-        val item = cartService.addToCart(authContext.getCurrentMemberId(), req.productId, req.quantity)
-        return ResponseEntity.status(HttpStatus.CREATED)
-            .body(ApiResponse.created(item, "장바구니에 담았습니다."))
+        val item = cartService.addToCart(memberId, req.productId, req.quantity)
+        return ApiResponse.createdEntity(item, "장바구니에 담았습니다.")
     }
 
     /**
@@ -66,8 +36,10 @@ class CartController(
      * 장바구니 목록 조회
      */
     @GetMapping
-    fun getCart(): ApiResponse<CartResponse> {
-        return ApiResponse.success(cartService.getCart(authContext.getCurrentMemberId()))
+    fun getCart(
+        @CurrentMemberId memberId: Long,
+    ): ApiResponse<CartResponse> {
+        return ApiResponse.success(cartService.getCart(memberId))
     }
 
     /**
@@ -76,18 +48,20 @@ class CartController(
      */
     @DeleteMapping("/{cartItemId}")
     fun removeFromCart(
+        @CurrentMemberId memberId: Long,
         @PathVariable cartItemId: Long,
     ): ApiResponse<Unit> {
-        cartService.removeFromCart(authContext.getCurrentMemberId(), cartItemId)
+        cartService.removeFromCart(memberId, cartItemId)
         return ApiResponse.success(Unit, "장바구니 상품을 삭제했습니다.")
     }
 
     @PatchMapping("/{cartItemId}")
     fun updateCartItem(
+        @CurrentMemberId memberId: Long,
         @PathVariable cartItemId: Long,
         @RequestBody req: CartUpdateRequest,
     ): ApiResponse<CartItem> {
-        val item = cartService.updateQuantity(authContext.getCurrentMemberId(), cartItemId, req.quantity)
+        val item = cartService.updateQuantity(memberId, cartItemId, req.quantity)
         return ApiResponse.success(item, "장바구니 수량을 변경했습니다.")
     }
 
@@ -96,8 +70,10 @@ class CartController(
      * 장바구니 전체 비우기 (주문 완료 후 자동 호출)
      */
     @DeleteMapping
-    fun clearCart(): ApiResponse<Unit> {
-        cartService.clearCart(authContext.getCurrentMemberId())
+    fun clearCart(
+        @CurrentMemberId memberId: Long,
+    ): ApiResponse<Unit> {
+        cartService.clearCart(memberId)
         return ApiResponse.success(Unit, "장바구니를 비웠습니다.")
     }
 }

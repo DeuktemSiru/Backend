@@ -2,6 +2,7 @@ package com.deuktemsiru.service
 
 import com.deuktemsiru.dto.*
 import com.deuktemsiru.entity.BusinessInfo
+import com.deuktemsiru.entity.MemberRole
 import com.deuktemsiru.entity.MenuItem
 import com.deuktemsiru.entity.Notification
 import com.deuktemsiru.entity.NotificationType
@@ -16,10 +17,17 @@ import com.deuktemsiru.repository.NotificationRepository
 import com.deuktemsiru.repository.OrderRepository
 import com.deuktemsiru.repository.ProductRepository
 import com.deuktemsiru.repository.WishlistRepository
+import com.deuktemsiru.common.toLocalDateOrThrow
+import com.deuktemsiru.common.toLocalTimeOrThrow
+import com.deuktemsiru.common.nowDateTime
+import com.deuktemsiru.common.today
+import org.springframework.data.repository.findByIdOrNull
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import org.springframework.web.multipart.MultipartFile
+import java.time.Clock
 import java.time.LocalDate
-import java.time.LocalTime
+import java.time.LocalDateTime
 
 @Service
 @Transactional(readOnly = true)
@@ -33,15 +41,15 @@ class SellerAppService(
     private val memberService: MemberService,
     private val menuImageStorageService: MenuImageStorageService,
     private val fcmService: FcmService,
-    // S3: sellerStore() 로직을 OrderService 에서 공유하여 중복 제거
-    private val orderService: OrderService,
+    private val storeOwnershipService: StoreOwnershipService,
+    private val clock: Clock,
 ) {
 
     // ── 가게 조회/수정 ────────────────────────────────────────────────────────
 
     fun getStore(sellerId: Long): SellerStoreResponse {
         val store = sellerStore(sellerId)
-        val today = LocalDate.now()
+        val today = today()
         val todayProductCount = productRepository.countByStoreAndAvailableDateAndStatus(
             store, today, ProductStatus.AVAILABLE
         )
@@ -77,10 +85,10 @@ class SellerAppService(
     // ── 상품 관리 ─────────────────────────────────────────────────────────────
 
     fun getProducts(sellerId: Long, date: LocalDate? = null, status: String? = null): List<SellerSaleItemResponse> {
-        val store = sellerStore(sellerId)
-        val targetDate = date ?: LocalDate.now()
+        val store = sellerStoreOrNull(sellerId) ?: return emptyList()
+        val targetDate = date ?: today()
         val products = if (status != null) {
-            val statusEnum = parseProductStatus(status)
+            val statusEnum = status.toProductStatus()
             productRepository.findByStoreAndAvailableDateAndStatus(store, targetDate, statusEnum)
         } else {
             productRepository.findByStoreAndAvailableDateOrderByCreatedAtDesc(store, targetDate)
@@ -95,16 +103,14 @@ class SellerAppService(
     }
 
     private fun createProductEntity(sellerId: Long, req: SaleItemRequest): Product {
+        require(req.name.isNotBlank()) { "상품 이름을 입력해 주세요." }
+        require(req.originalPrice > 0) { "정상가는 1원 이상이어야 합니다." }
         require(req.quantityTotal > 0) { "판매 수량은 1개 이상이어야 합니다." }
         require(req.discountPrice > 0) { "할인가는 1원 이상이어야 합니다." }
         require(req.discountPrice < req.originalPrice) { "할인가는 정가보다 낮아야 합니다." }
 
         val store = sellerStore(sellerId)
-        val menuItem = req.menuItemId?.let {
-            menuItemRepository.findById(it)
-                .orElseThrow { NoSuchElementException("메뉴를 찾을 수 없습니다.") }
-                .also { mi -> require(mi.store.storeId == store.storeId) { "내 매장의 메뉴만 등록할 수 있습니다." } }
-        }
+        val menuItem = req.menuItemId?.let { findSellerMenu(store, it) }
 
         val pickupStart = parsePickupTime(req.pickupStart, "픽업 시작 시간")
         val pickupEnd = parsePickupTime(req.pickupEnd, "픽업 종료 시간")
@@ -134,14 +140,11 @@ class SellerAppService(
     fun createProductWithImages(
         sellerId: Long,
         req: SaleItemRequest,
-        images: List<org.springframework.web.multipart.MultipartFile>,
+        images: List<MultipartFile>,
     ): SellerSaleItemResponse {
         val product = createProductEntity(sellerId, req)
-        images.filter { !it.isEmpty }.forEachIndexed { index, image ->
-            val imageUrl = menuImageStorageService.save(image)
-            if (imageUrl != null) {
-                product.images += ProductImage(product = product, imageUrl = imageUrl, displayOrder = index)
-            }
+        savedImageUrls(images).forEachIndexed { index, imageUrl ->
+            product.images += ProductImage(product = product, imageUrl = imageUrl, displayOrder = index)
         }
         product.thumbnailUrl = product.images.minByOrNull { it.displayOrder }?.imageUrl ?: product.thumbnailUrl
         return SellerSaleItemResponse.from(product)
@@ -150,10 +153,10 @@ class SellerAppService(
     @Transactional
     fun updateProductStatus(sellerId: Long, productId: Long, req: UpdateSaleStatusRequest): SellerSaleItemResponse {
         val store = sellerStore(sellerId)
-        val product = productRepository.findById(productId)
-            .orElseThrow { NoSuchElementException("판매 상품을 찾을 수 없습니다.") }
-        require(product.store.storeId == store.storeId) { "접근 권한이 없습니다." }
-        val nextStatus = parseProductStatus(req.status)
+        val product = findSellerProduct(store, productId)
+        val nextStatus = req.status.toProductStatus()
+        require(product.status != ProductStatus.DELETED) { "삭제된 상품은 상태를 변경할 수 없습니다." }
+        require(nextStatus != ProductStatus.DELETED) { "상품 삭제는 삭제 API를 사용해 주세요." }
         if (nextStatus == ProductStatus.AVAILABLE && product.quantityRemaining <= 0) {
             throw IllegalStateException("잔여 수량이 없는 상품은 먼저 수량을 수정해 주세요.")
         }
@@ -165,9 +168,8 @@ class SellerAppService(
     @Transactional
     fun updateProduct(sellerId: Long, productId: Long, req: UpdateSaleItemRequest): SellerSaleItemResponse {
         val store = sellerStore(sellerId)
-        val product = productRepository.findById(productId)
-            .orElseThrow { NoSuchElementException("판매 상품을 찾을 수 없습니다.") }
-        require(product.store.storeId == store.storeId) { "접근 권한이 없습니다." }
+        val product = findSellerProduct(store, productId)
+        require(product.status != ProductStatus.DELETED) { "삭제된 상품은 수정할 수 없습니다." }
 
         val nextOriginalPrice = req.originalPrice ?: product.originalPrice
         val nextDiscountPrice = req.discountPrice ?: product.discountPrice
@@ -192,12 +194,9 @@ class SellerAppService(
     @Transactional
     fun deleteProduct(sellerId: Long, productId: Long) {
         val store = sellerStore(sellerId)
-        val product = productRepository.findById(productId)
-            .orElseThrow { NoSuchElementException("판매 상품을 찾을 수 없습니다.") }
-        require(product.store.storeId == store.storeId) { "접근 권한이 없습니다." }
+        val product = findSellerProduct(store, productId)
         val activeStatuses = setOf(OrderStatus.PENDING, OrderStatus.CONFIRMED)
-        val hasActiveOrders = orderRepository.findByStoreOrderByCreatedAtDesc(store)
-            .any { order -> order.status in activeStatuses && order.items.any { it.product.productId == product.productId } }
+        val hasActiveOrders = orderRepository.existsActiveOrderForProduct(store, activeStatuses.toList(), product)
         require(!hasActiveOrders) { "진행 중인 주문이 있는 상품은 취소할 수 없습니다." }
         product.status = ProductStatus.DELETED
     }
@@ -205,7 +204,7 @@ class SellerAppService(
     // ── 메뉴 마스터 관리 ──────────────────────────────────────────────────────
 
     fun getMenus(sellerId: Long): List<SellerMenuItemResponse> {
-        val store = sellerStore(sellerId)
+        val store = sellerStoreOrNull(sellerId) ?: return emptyList()
         return menuItemRepository.findByStoreAndIsActiveTrue(store).map { SellerMenuItemResponse.from(it) }
     }
 
@@ -213,10 +212,9 @@ class SellerAppService(
     fun createMenu(sellerId: Long, req: SellerMenuItemRequest, imageUrl: String? = null): SellerMenuItemResponse {
         require(req.name.isNotBlank()) { "메뉴 이름을 입력해 주세요." }
         require(req.originalPrice > 0) { "정상가는 1원 이상이어야 합니다." }
-        val store = sellerStore(sellerId)
         val menuItem = menuItemRepository.save(
             MenuItem(
-                store = store,
+                store = sellerStore(sellerId),
                 name = req.name,
                 description = req.description,
                 originalPrice = req.originalPrice,
@@ -230,26 +228,17 @@ class SellerAppService(
     @Transactional
     fun createMenuWithImage(
         sellerId: Long,
-        name: String,
-        description: String?,
-        originalPrice: Int,
-        allergenInfo: String?,
-        image: org.springframework.web.multipart.MultipartFile?,
+        req: SellerMenuItemRequest,
+        image: MultipartFile?,
     ): SellerMenuItemResponse {
         val imageUrl = menuImageStorageService.save(image)
-        return createMenu(
-            sellerId,
-            SellerMenuItemRequest(name = name, description = description, originalPrice = originalPrice, allergenInfo = allergenInfo),
-            imageUrl,
-        )
+        return createMenu(sellerId, req, imageUrl)
     }
 
     @Transactional
     fun updateMenu(sellerId: Long, menuItemId: Long, req: SellerMenuItemUpdateRequest): SellerMenuItemResponse {
         val store = sellerStore(sellerId)
-        val menuItem = menuItemRepository.findById(menuItemId)
-            .orElseThrow { NoSuchElementException("메뉴를 찾을 수 없습니다.") }
-        require(menuItem.store.storeId == store.storeId) { "접근 권한이 없습니다." }
+        val menuItem = findSellerMenu(store, menuItemId)
         req.name?.takeIf { it.isNotBlank() }?.let { menuItem.name = it }
         req.originalPrice?.let {
             require(it > 0) { "정상가는 1원 이상이어야 합니다." }
@@ -261,9 +250,7 @@ class SellerAppService(
     @Transactional
     fun deleteMenu(sellerId: Long, menuItemId: Long) {
         val store = sellerStore(sellerId)
-        val menuItem = menuItemRepository.findById(menuItemId)
-            .orElseThrow { NoSuchElementException("메뉴를 찾을 수 없습니다.") }
-        require(menuItem.store.storeId == store.storeId) { "접근 권한이 없습니다." }
+        val menuItem = findSellerMenu(store, menuItemId)
         menuItem.isActive = false
     }
 
@@ -272,6 +259,8 @@ class SellerAppService(
     @Transactional
     fun registerBusinessInfo(sellerId: Long, businessNumber: String, businessName: String = ""): BusinessInfo {
         val member = memberService.findMember(sellerId)
+        require(member.role == MemberRole.SELLER) { "판매자 계정만 사업자 정보를 등록할 수 있습니다." }
+        require(businessNumber.isNotBlank()) { "사업자 번호를 입력해 주세요." }
         val info = businessInfoRepository.findByMember(member).orElseGet {
             BusinessInfo(
                 member = member,
@@ -294,26 +283,14 @@ class SellerAppService(
         require(req.message.isNotBlank()) { "알림 내용을 입력해 주세요." }
         val store = sellerStore(sellerId)
         val recipients = notificationRecipients(store, req)
-        val saved = recipients.map { member ->
-            notificationRepository.save(
-                Notification(
-                    member = member,
-                    relatedStoreId = store.storeId,
-                    type = NotificationType.EVENT,
-                    title = store.name,
-                    body = req.message,
-                )
-            ).also {
-                fcmService.sendToMember(member.memberId, it.title, it.body)
-            }
-        }
+        val saved = recipients.map { member -> saveEventNotification(member, store, req.message) }
         val sent = saved.firstOrNull()
         return SellerNotificationResponse(
             id = sent?.notificationId ?: 0,
             storeId = store.storeId,
             storeName = store.name,
             message = req.message,
-            sentAt = (sent?.createdAt ?: java.time.LocalDateTime.now()).toString(),
+            sentAt = (sent?.createdAt ?: now()).toString(),
             recipientCount = recipients.size,
         )
     }
@@ -322,28 +299,29 @@ class SellerAppService(
         val store = sellerStore(sellerId)
         return notificationRepository.findByRelatedStoreIdAndTitleOrderByCreatedAtDesc(store.storeId, store.name)
             .groupBy { it.body to it.createdAt.toString().take(16) }
-            .map { (_, notifications) ->
-                val first = notifications.maxBy { it.createdAt }
-                first.createdAt to SellerNotificationResponse(
+            .map { (_, notifications) -> notifications.maxBy { it.createdAt } to notifications.size }
+            .sortedByDescending { (first, _) -> first.createdAt }
+            .map { (first, recipientCount) ->
+                SellerNotificationResponse(
                     id = first.notificationId,
                     storeId = store.storeId,
                     storeName = store.name,
                     message = first.body,
                     sentAt = first.createdAt.toString(),
-                    recipientCount = notifications.size,
+                    recipientCount = recipientCount,
                 )
             }
-            .sortedByDescending { (createdAt, _) -> createdAt }
-            .map { (_, response) -> response }
     }
 
     private fun notificationRecipients(store: Store, req: SendNotificationRequest): List<com.deuktemsiru.entity.Member> {
+        req.radiusKm?.let { require(it > 0) { "알림 반경은 1km 이상이어야 합니다." } }
         val wishlistedMembers = wishlistRepository.findByStore(store)
             .map { it.member }
         val orderMembers = orderRepository.findByStoreOrderByCreatedAtDesc(store)
             .map { it.consumer }
         val base = when (req.targetType.uppercase()) {
-            "REGULAR", "NEARBY" -> (wishlistedMembers + orderMembers)
+            "REGULAR" -> (wishlistedMembers + orderMembers)
+            "NEARBY" -> throw IllegalStateException("주변 알림은 회원 위치 정보가 없어 아직 사용할 수 없습니다.")
             else -> throw IllegalArgumentException("지원하지 않는 알림 대상: ${req.targetType}")
         }
         return base
@@ -351,14 +329,61 @@ class SellerAppService(
             .distinctBy { it.memberId }
     }
 
-    private fun parsePickupTime(value: String, fieldName: String): LocalTime =
-        runCatching { LocalTime.parse(value) }
-            .getOrElse { throw IllegalArgumentException("$fieldName 형식은 HH:mm 이어야 합니다.") }
+    private fun findSellerProduct(store: Store, productId: Long): Product =
+        findOwnedEntity(
+            id = productId,
+            notFoundMessage = "판매 상품을 찾을 수 없습니다.",
+            findById = productRepository::findByIdOrNull,
+            storeIdOf = { it.store.storeId },
+            store = store,
+        )
 
-    private fun parseAvailableDate(value: String): LocalDate =
-        runCatching { LocalDate.parse(value) }
-            .getOrElse { throw IllegalArgumentException("판매일 형식은 yyyy-MM-dd 이어야 합니다.") }
+    private fun findSellerMenu(store: Store, menuItemId: Long): MenuItem =
+        findOwnedEntity(
+            id = menuItemId,
+            notFoundMessage = "메뉴를 찾을 수 없습니다.",
+            findById = menuItemRepository::findByIdOrNull,
+            storeIdOf = { it.store.storeId },
+            store = store,
+        )
 
-    // S3: OrderService.sellerStore() 에 위임하여 중복 제거
-    private fun sellerStore(sellerId: Long) = orderService.sellerStore(sellerId)
+    private fun savedImageUrls(images: List<MultipartFile>): List<String> =
+        images.mapNotNull { menuImageStorageService.save(it) }
+
+    private fun saveEventNotification(
+        member: com.deuktemsiru.entity.Member,
+        store: Store,
+        message: String,
+    ): Notification =
+        notificationRepository.save(
+            Notification(
+                member = member,
+                relatedStoreId = store.storeId,
+                type = NotificationType.EVENT,
+                title = store.name,
+                body = message,
+            )
+        ).also { fcmService.sendToMember(member.memberId, it.title, it.body) }
+
+    private fun <T> findOwnedEntity(
+        id: Long,
+        notFoundMessage: String,
+        findById: (Long) -> T?,
+        storeIdOf: (T) -> Long,
+        store: Store,
+    ): T =
+        (findById(id) ?: throw NoSuchElementException(notFoundMessage))
+            .also { require(storeIdOf(it) == store.storeId) { "접근 권한이 없습니다." } }
+
+    private fun parsePickupTime(value: String, fieldName: String) = value.toLocalTimeOrThrow(fieldName)
+
+    private fun parseAvailableDate(value: String): LocalDate = value.toLocalDateOrThrow("판매일")
+
+    private fun sellerStore(sellerId: Long) = storeOwnershipService.findSellerStore(sellerId)
+
+    private fun sellerStoreOrNull(sellerId: Long) = storeOwnershipService.findSellerStoreOrNull(sellerId)
+
+    private fun today(): LocalDate = clock.today()
+
+    private fun now(): LocalDateTime = clock.nowDateTime()
 }

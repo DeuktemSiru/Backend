@@ -1,18 +1,20 @@
 package com.deuktemsiru.controller.seller
 
 import com.deuktemsiru.common.ApiResponse
+import com.deuktemsiru.common.created
+import com.deuktemsiru.common.ok
+import com.deuktemsiru.common.toLocalDateOrThrow
+import com.deuktemsiru.dto.SaleItemForm
 import com.deuktemsiru.dto.SaleItemRequest
 import com.deuktemsiru.dto.SellerSaleItemResponse
 import com.deuktemsiru.dto.UpdateSaleItemRequest
 import com.deuktemsiru.dto.UpdateSaleStatusRequest
-import com.deuktemsiru.security.AuthContext
+import com.deuktemsiru.security.CurrentMemberId
 import com.deuktemsiru.service.SellerAppService
-import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.*
 import org.springframework.web.multipart.MultipartFile
-import java.time.LocalDate
 
 // ── Controller ────────────────────────────────────────────────────────────────
 
@@ -20,7 +22,6 @@ import java.time.LocalDate
 @RequestMapping("/api/v1/sellers/products")
 class SellerProductController(
     private val sellerAppService: SellerAppService,
-    private val authContext: AuthContext,
 ) {
 
     /**
@@ -29,12 +30,12 @@ class SellerProductController(
      */
     @GetMapping
     fun getProducts(
+        @CurrentMemberId sellerId: Long,
         @RequestParam(required = false) date: String?,
         @RequestParam(required = false) status: String?,
     ): ApiResponse<List<SellerSaleItemResponse>> {
-        val sellerId = authContext.getCurrentMemberId()
-        val parsedDate = date?.let { LocalDate.parse(it) }
-        return ApiResponse.success(sellerAppService.getProducts(sellerId, parsedDate, status))
+        val parsedDate = date?.toLocalDateOrThrow()
+        return ok(sellerAppService.getProducts(sellerId, parsedDate, status))
     }
 
     /**
@@ -43,47 +44,19 @@ class SellerProductController(
      */
     @PostMapping(consumes = [MediaType.APPLICATION_JSON_VALUE])
     fun createProduct(
+        @CurrentMemberId sellerId: Long,
         @RequestBody req: SaleItemRequest,
     ): ResponseEntity<ApiResponse<SellerSaleItemResponse>> {
-        val sellerId = authContext.getCurrentMemberId()
-        val product = sellerAppService.createProduct(sellerId, req)
-        return ResponseEntity.status(HttpStatus.CREATED)
-            .body(ApiResponse.created(product, "판매 상품이 등록되었습니다."))
+        return createdProduct(sellerAppService.createProduct(sellerId, req))
     }
 
     @PostMapping(consumes = [MediaType.MULTIPART_FORM_DATA_VALUE])
     fun createProductWithImage(
-        @RequestPart name: String,
-        @RequestPart discountPrice: String,
-        @RequestPart originalPrice: String,
-        @RequestPart quantityTotal: String,
-        @RequestPart pickupStart: String,
-        @RequestPart pickupEnd: String,
-        @RequestPart availableDate: String,
-        @RequestPart(required = false) menuItemId: String?,
-        @RequestPart(required = false) madeAt: String?,
-        @RequestPart(required = false) allergenInfo: String?,
+        @CurrentMemberId sellerId: Long,
+        @ModelAttribute form: SaleItemForm,
         @RequestPart(required = false) images: List<MultipartFile>?,
     ): ResponseEntity<ApiResponse<SellerSaleItemResponse>> {
-        val sellerId = authContext.getCurrentMemberId()
-        val product = sellerAppService.createProductWithImages(
-            sellerId = sellerId,
-            req = SaleItemRequest(
-                menuItemId = menuItemId?.toLongOrNull(),
-                name = name,
-                discountPrice = discountPrice.toInt(),
-                originalPrice = originalPrice.toInt(),
-                quantityTotal = quantityTotal.toInt(),
-                madeAt = madeAt,
-                pickupStart = pickupStart,
-                pickupEnd = pickupEnd,
-                availableDate = availableDate,
-                allergenInfo = allergenInfo,
-            ),
-            images = images.orEmpty(),
-        )
-        return ResponseEntity.status(HttpStatus.CREATED)
-            .body(ApiResponse.created(product, "판매 상품이 등록되었습니다."))
+        return createdProduct(sellerAppService.createProductWithImages(sellerId, form.toRequest(), images.orEmpty()))
     }
 
     /**
@@ -92,20 +65,20 @@ class SellerProductController(
      */
     @PatchMapping("/{productId}/status")
     fun updateProduct(
+        @CurrentMemberId sellerId: Long,
         @PathVariable productId: Long,
         @RequestBody req: UpdateSaleStatusRequest,
     ): ApiResponse<SellerSaleItemResponse> {
-        val sellerId = authContext.getCurrentMemberId()
-        return ApiResponse.success(sellerAppService.updateProductStatus(sellerId, productId, req))
+        return ok(sellerAppService.updateProductStatus(sellerId, productId, req))
     }
 
     @PatchMapping("/{productId}")
     fun updateProductDetails(
+        @CurrentMemberId sellerId: Long,
         @PathVariable productId: Long,
         @RequestBody req: UpdateSaleItemRequest,
     ): ApiResponse<SellerSaleItemResponse> {
-        val sellerId = authContext.getCurrentMemberId()
-        return ApiResponse.success(sellerAppService.updateProduct(sellerId, productId, req))
+        return ok(sellerAppService.updateProduct(sellerId, productId, req))
     }
 
     /**
@@ -114,10 +87,13 @@ class SellerProductController(
      */
     @DeleteMapping("/{productId}")
     fun deleteProduct(
+        @CurrentMemberId sellerId: Long,
         @PathVariable productId: Long,
     ): ApiResponse<Unit> {
-        val sellerId = authContext.getCurrentMemberId()
         sellerAppService.deleteProduct(sellerId, productId)
-        return ApiResponse.success(Unit, "판매 상품이 삭제되었습니다.")
+        return ok(Unit, "판매 상품이 삭제되었습니다.")
     }
+
+    private fun createdProduct(product: SellerSaleItemResponse): ResponseEntity<ApiResponse<SellerSaleItemResponse>> =
+        created(product, "판매 상품이 등록되었습니다.")
 }

@@ -17,6 +17,7 @@ data class StoreListItemResponse(
     val representativeDiscountPrice: Int,
     val representativeDiscountRate: Int,
     val representativePickupEnd: String?,
+    val isWishlisted: Boolean,
 ) {
     companion object {
         fun from(
@@ -24,6 +25,7 @@ data class StoreListItemResponse(
             availableProductCount: Int,
             distanceM: Int = 0,
             representativeProduct: Product? = null,
+            isWishlisted: Boolean = false,
         ): StoreListItemResponse {
             val originalPrice = representativeProduct?.originalPrice ?: 0
             val discountPrice = representativeProduct?.discountPrice ?: 0
@@ -44,6 +46,7 @@ data class StoreListItemResponse(
                     0
                 },
                 representativePickupEnd = representativeProduct?.pickupEnd?.toString(),
+                isWishlisted = isWishlisted,
             )
         }
     }
@@ -60,15 +63,15 @@ data class StoreProductItem(
     val pickupEnd: String,
     val status: String,
 ) {
-    companion object {
-        fun from(product: Product) = StoreProductItem(
-            productId = product.productId,
-            name = product.name,
-            originalPrice = product.originalPrice,
-            discountPrice = product.discountPrice,
-            quantityRemaining = product.quantityRemaining,
-            pickupStart = product.pickupStart.toString(),
-            pickupEnd = product.pickupEnd.toString(),
+        companion object {
+            fun from(product: Product) = StoreProductItem(
+            productId = product.summary.productId,
+            name = product.summary.name,
+            originalPrice = product.summary.originalPrice,
+            discountPrice = product.summary.discountPrice,
+            quantityRemaining = product.summary.quantityRemaining,
+            pickupStart = product.summary.pickupStart,
+            pickupEnd = product.summary.pickupEnd,
             status = product.status.name,
         )
     }
@@ -89,9 +92,10 @@ data class StoreDetailResponse(
     val ratingAvg: Double,
     val reviewCount: Int,
     val products: List<StoreProductItem>,
+    val isWishlisted: Boolean,
 ) {
     companion object {
-        fun from(store: Store, products: List<Product>) = StoreDetailResponse(
+        fun from(store: Store, products: List<Product>, isWishlisted: Boolean = false) = StoreDetailResponse(
             storeId = store.storeId,
             name = store.name,
             description = store.description,
@@ -105,6 +109,7 @@ data class StoreDetailResponse(
             ratingAvg = store.ratingAvg,
             reviewCount = store.reviewCount,
             products = products.map { StoreProductItem.from(it) },
+            isWishlisted = isWishlisted,
         )
     }
 }
@@ -122,15 +127,15 @@ data class ProductListItemResponse(
     val storeName: String,
     val distanceM: Int,
 ) {
-    companion object {
-        fun from(product: Product, distanceM: Int = 0) = ProductListItemResponse(
-            productId = product.productId,
-            name = product.name,
+        companion object {
+            fun from(product: Product, distanceM: Int = 0) = ProductListItemResponse(
+            productId = product.summary.productId,
+            name = product.summary.name,
             thumbnailUrl = product.thumbnailUrl,
-            originalPrice = product.originalPrice,
-            discountPrice = product.discountPrice,
-            quantityRemaining = product.quantityRemaining,
-            pickupEnd = product.pickupEnd.toString(),
+            originalPrice = product.summary.originalPrice,
+            discountPrice = product.summary.discountPrice,
+            quantityRemaining = product.summary.quantityRemaining,
+            pickupEnd = product.summary.pickupEnd,
             status = product.status.name,
             storeName = product.store.name,
             distanceM = distanceM,
@@ -219,6 +224,11 @@ data class WishlistItemResponse(
     val storeId: Long,
     val name: String,
     val thumbnailUrl: String?,
+    val category: String,
     val ratingAvg: Double,
     val availableProductCount: Int,
+    val representativeOriginalPrice: Int,
+    val representativeDiscountPrice: Int,
+    val representativeDiscountRate: Int,
+    val representativePickupEnd: String?,
 )

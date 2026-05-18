@@ -1,6 +1,11 @@
 package com.deuktemsiru.service
 
 import com.deuktemsiru.common.toEnumOrThrow
+import com.deuktemsiru.common.toLocalDateOrThrow
+import com.deuktemsiru.common.nowDateTime
+import com.deuktemsiru.common.orNotFound
+import com.deuktemsiru.common.safePage
+import com.deuktemsiru.common.today
 import com.deuktemsiru.dto.CreateOrderRequest
 import com.deuktemsiru.dto.CreateOrderResponse
 import com.deuktemsiru.dto.DailySales
@@ -19,15 +24,21 @@ import com.deuktemsiru.entity.Payment
 import com.deuktemsiru.entity.PaymentMethod
 import com.deuktemsiru.entity.PaymentStatus
 import com.deuktemsiru.entity.ProductStatus
+import com.deuktemsiru.entity.requirePurchasableOn
 import com.deuktemsiru.repository.MemberStatsRepository
 import com.deuktemsiru.repository.OrderRepository
 import com.deuktemsiru.repository.PaymentRepository
 import com.deuktemsiru.repository.ProductRepository
-import com.deuktemsiru.repository.StoreRepository
+import org.springframework.data.domain.PageRequest
+import org.springframework.data.domain.Pageable
+import org.springframework.data.domain.Sort
+import org.springframework.data.jpa.domain.Specification
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.security.SecureRandom
+import java.time.Clock
 import java.time.LocalDate
+import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import java.time.temporal.TemporalAdjusters
 
@@ -36,10 +47,11 @@ import java.time.temporal.TemporalAdjusters
 class OrderService(
     private val orderRepository: OrderRepository,
     private val paymentRepository: PaymentRepository,
-    private val storeRepository: StoreRepository,
     private val productRepository: ProductRepository,
     private val memberStatsRepository: MemberStatsRepository,
     private val memberService: MemberService,
+    private val storeOwnershipService: StoreOwnershipService,
+    private val clock: Clock,
 ) {
     private companion object {
         private const val PICKUP_CODE_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
@@ -48,18 +60,30 @@ class OrderService(
 
     @Transactional
     fun createOrder(consumerId: Long, req: CreateOrderRequest): CreateOrderResponse {
-        val consumer = memberService.findMember(consumerId)
+        val consumer = memberService.findMemberForUpdate(consumerId)
         require(consumer.role == MemberRole.CONSUMER) { "소비자 계정만 주문할 수 있습니다." }
         require(req.items.isNotEmpty()) { "주문 항목이 없습니다." }
+        val orderItems = req.items
+            .groupBy { it.productId }
+            .map { (productId, items) ->
+                val quantity = items.sumOf { item ->
+                    require(item.quantity > 0) { "주문 수량은 1개 이상이어야 합니다." }
+                    item.quantity
+                }
+                com.deuktemsiru.dto.OrderItemRequest(productId = productId, quantity = quantity)
+            }
 
-        // B7: 모든 상품을 먼저 잠근 후 재고 차감 (lost-update 방지)
-        val lockedProducts = req.items.associate { itemReq ->
-            itemReq.productId to productRepository.findByIdForUpdate(itemReq.productId)
-                .orElseThrow { NoSuchElementException("상품을 찾을 수 없습니다.") }
-        }
+        val lockedProducts = orderItems
+            .map { it.productId }
+            .distinct()
+            .sorted()
+            .associateWith { productId ->
+                productRepository.findByIdForUpdate(productId)
+                    .orNotFound("상품을 찾을 수 없습니다.")
+            }
 
         // 첫 번째 상품에서 가게 결정
-        val firstProduct = lockedProducts[req.items.first().productId]!!
+        val firstProduct = lockedProducts[orderItems.first().productId]!!
         val store = firstProduct.store
 
         val order = Orders(
@@ -68,12 +92,10 @@ class OrderService(
             pickupCode = generatePickupCode(),
         )
 
-        order.items += req.items.map { itemReq ->
-            require(itemReq.quantity > 0) { "주문 수량은 1개 이상이어야 합니다." }
+        order.items += orderItems.map { itemReq ->
             val product = lockedProducts[itemReq.productId]!!
             require(product.store.storeId == store.storeId) { "같은 가게의 상품만 주문할 수 있습니다." }
-            require(product.status == ProductStatus.AVAILABLE) { "${product.name}은(는) 구매 불가 상태입니다." }
-            require(product.quantityRemaining >= itemReq.quantity) { "${product.name} 재고가 부족합니다." }
+            product.requirePurchasableOn(today(), itemReq.quantity)
 
             product.quantityRemaining -= itemReq.quantity
             if (product.quantityRemaining == 0) product.status = ProductStatus.SOLD_OUT
@@ -99,30 +121,24 @@ class OrderService(
         size: Int = 20,
     ): List<OrderListItemResponse> {
         val consumer = memberService.findMember(consumerId)
-        var orders = orderRepository.findByConsumerOrderByCreatedAtDesc(consumer)
-        if (statusFilter != null) {
+        val pageable = safePage(page, size)
+        val orders = if (statusFilter != null) {
             val target = statusFilter.toEnumOrThrow<OrderStatus>("주문 상태")
-            orders = orders.filter { it.status == target }
+            orderRepository.findByConsumerAndStatusOrderByCreatedAtDesc(consumer, target, pageable)
+        } else {
+            orderRepository.findByConsumerOrderByCreatedAtDesc(consumer, pageable)
         }
-        // S2: 수동 fromIndex/toIndex 계산을 drop/take 로 대체
-        val safeSize = size.coerceAtLeast(1).coerceAtMost(100)
-        val fromIndex = page.coerceAtLeast(0) * safeSize
-        return orders.drop(fromIndex).take(safeSize).map { OrderListItemResponse.from(it) }
+        return orders.map { OrderListItemResponse.from(it) }
     }
 
     fun getOrder(consumerId: Long, orderId: Long): OrderDetailResponse {
-        val order = orderRepository.findById(orderId)
-            .orElseThrow { NoSuchElementException("주문을 찾을 수 없습니다.") }
-        require(order.consumer.memberId == consumerId) { "접근 권한이 없습니다." }
+        val order = findConsumerOrder(consumerId, orderId)
         return OrderDetailResponse.from(order, latestPayment(order))
     }
 
     @Transactional
     fun cancelOrder(consumerId: Long, orderId: Long): OrderDetailResponse {
-        val consumer = memberService.findMember(consumerId)
-        val order = orderRepository.findById(orderId)
-            .orElseThrow { NoSuchElementException("주문을 찾을 수 없습니다.") }
-        require(order.consumer.memberId == consumerId) { "접근 권한이 없습니다." }
+        val order = findConsumerOrderForUpdate(consumerId, orderId)
         require(
             order.status == OrderStatus.PENDING || order.status == OrderStatus.CONFIRMED
         ) { "픽업 완료되거나 이미 취소된 주문은 취소할 수 없습니다." }
@@ -140,28 +156,22 @@ class OrderService(
         page: Int = 0,
         size: Int = 20,
     ): List<OrderDetailResponse> {
-        var orders = getStoreOrderEntities(sellerId)
-        status?.let {
-            val target = it.toEnumOrThrow<OrderStatus>("주문 상태")
-            orders = orders.filter { order -> order.status == target }
-        }
-        date?.let {
-            val targetDate = runCatching { LocalDate.parse(it) }
-                .getOrElse { throw IllegalArgumentException("날짜 형식은 yyyy-MM-dd 이어야 합니다.") }
-            orders = orders.filter { order -> order.createdAt.toLocalDate() == targetDate }
-        }
+        val store = sellerStoreOrNull(sellerId) ?: return emptyList()
+        val targetStatus = status?.toEnumOrThrow<OrderStatus>("주문 상태")
+        val pageable = safePage(page, size)
+        val targetDate = date?.let { parseDate(it) }
+        val orderedPageable = PageRequest.of(pageable.pageNumber, pageable.pageSize, Sort.by(Sort.Direction.DESC, "createdAt"))
+        val orders = orderRepository.findAll(
+            buildOrderSpec(store, targetStatus, targetDate?.atStartOfDay(), targetDate?.plusDays(1)?.atStartOfDay()),
+            orderedPageable,
+        ).content
 
-        // S2: drop/take 로 페이지네이션
-        val safeSize = size.coerceAtLeast(1).coerceAtMost(100)
-        val fromIndex = page.coerceAtLeast(0) * safeSize
-        return orders.drop(fromIndex).take(safeSize).map { OrderDetailResponse.from(it, latestPayment(it)) }
+        val payments = latestPayments(orders)
+        return orders.map { OrderDetailResponse.from(it, payments[it.orderId]) }
     }
 
     fun getStoreOrder(sellerId: Long, orderId: Long): OrderDetailResponse {
-        val store = sellerStore(sellerId)
-        val order = orderRepository.findById(orderId)
-            .orElseThrow { NoSuchElementException("주문을 찾을 수 없습니다.") }
-        require(order.store.storeId == store.storeId) { "접근 권한이 없습니다." }
+        val order = findSellerOrder(sellerId, orderId)
         return OrderDetailResponse.from(order, latestPayment(order))
     }
 
@@ -171,10 +181,7 @@ class OrderService(
 
     @Transactional
     fun updateOrderStatus(sellerId: Long, orderId: Long, req: UpdateOrderStatusRequest): OrderDetailResponse {
-        val store = sellerStore(sellerId)
-        val order = orderRepository.findById(orderId)
-            .orElseThrow { NoSuchElementException("주문을 찾을 수 없습니다.") }
-        require(order.store.storeId == store.storeId) { "접근 권한이 없습니다." }
+        val order = findSellerOrderForUpdate(sellerId, orderId)
         val previousStatus = order.status
         require(canTransition(previousStatus, req.status)) {
             "주문 상태를 ${order.status}에서 ${req.status}(으)로 변경할 수 없습니다."
@@ -192,15 +199,20 @@ class OrderService(
 
     @Transactional
     fun verifyPickupCode(sellerId: Long, pickupCode: String): OrderDetailResponse {
-        val store = sellerStore(sellerId)
-        val order = orderRepository.findByPickupCode(pickupCode)
-            ?: throw NoSuchElementException("픽업 코드를 찾을 수 없습니다.")
-        require(order.store.storeId == store.storeId) { "접근 권한이 없습니다." }
-        require(order.status == OrderStatus.CONFIRMED) { "픽업 대기 중인 주문만 확인할 수 있습니다." }
+        val order = findConfirmablePickupOrder(sellerId, pickupCode)
         return OrderDetailResponse.from(order, latestPayment(order))
     }
 
-    fun getSalesStats(sellerId: Long, period: String = "DAY", targetDate: LocalDate = LocalDate.now()): SalesResponse {
+    @Transactional
+    fun confirmPickupCode(sellerId: Long, orderId: Long, pickupCode: String): OrderDetailResponse {
+        val order = findConfirmablePickupOrder(sellerId, pickupCode)
+        require(order.orderId == orderId) { "주문과 픽업 코드가 일치하지 않습니다." }
+        order.status = OrderStatus.PICKED_UP
+        applyPickupStats(order)
+        return OrderDetailResponse.from(order, latestPayment(order))
+    }
+
+    fun getSalesStats(sellerId: Long, period: String = "DAY", targetDate: LocalDate = today()): SalesResponse {
         val agg = aggregateSales(sellerId, period, targetDate)
         return SalesResponse(
             totalAmount = agg.totalAmount,
@@ -211,7 +223,7 @@ class OrderService(
         )
     }
 
-    fun getSellerSalesStats(sellerId: Long, period: String = "DAY", targetDate: LocalDate = LocalDate.now()): SellerSalesResponse {
+    fun getSellerSalesStats(sellerId: Long, period: String = "DAY", targetDate: LocalDate = today()): SellerSalesResponse {
         val agg = aggregateSales(sellerId, period, targetDate)
         return SellerSalesResponse(
             totalAmount = agg.totalAmount,
@@ -230,21 +242,32 @@ class OrderService(
     )
 
     private fun aggregateSales(sellerId: Long, period: String, targetDate: LocalDate): SalesAggregation {
-        val (_, pickedUpOrders) = fetchStoreOrders(sellerId)
-        val targetDayOrders = pickedUpOrders.filter { it.createdAt.toLocalDate() == targetDate }
+        val (start, endExclusive) = salesWindow(period, targetDate)
+        val store = sellerStoreOrNull(sellerId)
+            ?: return SalesAggregation(
+                totalAmount = 0,
+                totalOrders = 0,
+                chartData = salesData(period, targetDate, emptyList()),
+                topCounts = emptyList(),
+            )
+        val periodOrders = orderRepository.findAll(
+            buildOrderSpec(store, OrderStatus.PICKED_UP, start.atStartOfDay(), endExclusive.atStartOfDay()),
+        )
         return SalesAggregation(
-            totalAmount = targetDayOrders.sumOf { it.totalPrice },
-            totalOrders = targetDayOrders.size,
-            chartData = salesData(period, targetDate, pickedUpOrders),
-            topCounts = topProductCounts(pickedUpOrders),
+            totalAmount = periodOrders.sumOf { it.totalPrice },
+            totalOrders = periodOrders.size,
+            chartData = salesData(period, targetDate, periodOrders),
+            topCounts = topProductCounts(periodOrders),
         )
     }
 
-    private fun fetchStoreOrders(sellerId: Long): Pair<List<Orders>, List<Orders>> {
-        val store = sellerStore(sellerId)
-        val all = orderRepository.findByStoreOrderByCreatedAtDesc(store)
-        return all to all.filter { it.status == OrderStatus.PICKED_UP }
-    }
+    private fun salesWindow(period: String, targetDate: LocalDate): Pair<LocalDate, LocalDate> =
+        when (period.uppercase()) {
+            "YEAR" -> targetDate.withDayOfYear(1).let { it to it.plusYears(1) }
+            "MONTH" -> targetDate.withDayOfMonth(1).let { it to it.plusMonths(1) }
+            "WEEK" -> targetDate.minusDays(targetDate.dayOfWeek.value.toLong() - 1).let { it to it.plusDays(7) }
+            else -> targetDate to targetDate.plusDays(1)
+        }
 
     // ── 내부 유틸 ────────────────────────────────────────────────────────────
 
@@ -263,7 +286,7 @@ class OrderService(
                 method = method,
                 amount = order.totalPrice,
                 status = PaymentStatus.COMPLETED,
-                paidAt = java.time.LocalDateTime.now(),
+                paidAt = now(),
                 externalTransactionId = "${method.name}-${order.orderId}-${System.currentTimeMillis()}",
             )
         )
@@ -272,13 +295,54 @@ class OrderService(
     private fun latestPayment(order: Orders): Payment? =
         paymentRepository.findFirstByOrderOrderByPaymentIdDesc(order).orElse(null)
 
-    // S3: SellerAppService 에서도 재사용할 수 있도록 internal 로 공개
-    internal fun sellerStore(sellerId: Long): com.deuktemsiru.entity.Store {
-        val seller = memberService.findMember(sellerId)
-        require(seller.role == MemberRole.SELLER) { "판매자 계정만 주문을 처리할 수 있습니다." }
-        return storeRepository.findByOwner(seller)
-            .orElseThrow { NoSuchElementException("등록된 가게가 없습니다.") }
+    private fun latestPayments(orders: List<Orders>): Map<Long, Payment> {
+        val orderIds = orders.map { it.orderId }
+        if (orderIds.isEmpty()) return emptyMap()
+        return paymentRepository.findLatestByOrderIds(orderIds).associateBy { it.order.orderId }
     }
+
+    private fun sellerStore(sellerId: Long): com.deuktemsiru.entity.Store =
+        storeOwnershipService.findSellerStore(sellerId)
+
+    private fun sellerStoreOrNull(sellerId: Long): com.deuktemsiru.entity.Store? =
+        storeOwnershipService.findSellerStoreOrNull(sellerId)
+
+    private fun findConsumerOrder(consumerId: Long, orderId: Long): Orders =
+        findOrder(orderId) { it.consumer.memberId == consumerId }
+
+    private fun findConsumerOrderForUpdate(consumerId: Long, orderId: Long): Orders =
+        findOrder(orderId, forUpdate = true) { it.consumer.memberId == consumerId }
+
+    private fun findSellerOrder(sellerId: Long, orderId: Long): Orders {
+        val store = sellerStore(sellerId)
+        return findOrder(orderId) { it.store.storeId == store.storeId }
+    }
+
+    private fun findSellerOrderForUpdate(sellerId: Long, orderId: Long): Orders {
+        val store = sellerStore(sellerId)
+        return findOrder(orderId, forUpdate = true) { it.store.storeId == store.storeId }
+    }
+
+    private fun findOrder(orderId: Long, forUpdate: Boolean = false, canAccess: (Orders) -> Boolean): Orders {
+        val order = if (forUpdate) orderRepository.findByIdForUpdate(orderId) else orderRepository.findById(orderId)
+        return order
+            .orNotFound("주문을 찾을 수 없습니다.")
+            .also { require(canAccess(it)) { "접근 권한이 없습니다." } }
+    }
+
+    private fun findConfirmablePickupOrder(sellerId: Long, pickupCode: String): Orders {
+        val store = sellerStore(sellerId)
+        return (orderRepository.findByPickupCodeForUpdate(pickupCode)
+            ?: throw NoSuchElementException("픽업 코드를 찾을 수 없습니다."))
+            .also {
+                require(it.store.storeId == store.storeId) { "접근 권한이 없습니다." }
+                require(it.status == OrderStatus.CONFIRMED) { "픽업 대기 중인 주문만 확인할 수 있습니다." }
+            }
+    }
+
+    private fun today(): LocalDate = clock.today()
+
+    private fun now(): LocalDateTime = clock.nowDateTime()
 
     private fun cancelAndRefund(order: Orders) {
         if (order.status == OrderStatus.CANCELLED) return
@@ -295,7 +359,7 @@ class OrderService(
                     method = payment.method,
                     amount = payment.amount,
                     status = PaymentStatus.REFUNDED,
-                    paidAt = java.time.LocalDateTime.now(),
+                    paidAt = now(),
                     externalTransactionId = "REFUND-${payment.paymentId}-${System.currentTimeMillis()}",
                 )
             )
@@ -336,8 +400,10 @@ class OrderService(
     private fun buildSalesChart(
         orders: List<Orders>,
         buckets: List<Pair<String, (Orders) -> Boolean>>,
-    ): List<DailySales> = buckets.map { (label, matches) ->
-        DailySales(label, orders.sumOf { if (matches(it)) it.totalPrice else 0 })
+    ): List<DailySales> {
+        return buckets.map { (label, matches) ->
+            DailySales(label, orders.filter(matches).sumOf { it.totalPrice })
+        }
     }
 
     private fun dailySales(date: LocalDate, orders: List<Orders>): List<DailySales> =
@@ -413,5 +479,21 @@ class OrderService(
             OrderStatus.CONFIRMED -> next == OrderStatus.PICKED_UP || next == OrderStatus.CANCELLED
             OrderStatus.PICKED_UP, OrderStatus.CANCELLED -> false
         }
+    }
+
+    private fun parseDate(value: String): LocalDate = value.toLocalDateOrThrow()
+
+    private fun buildOrderSpec(
+        store: com.deuktemsiru.entity.Store,
+        status: OrderStatus? = null,
+        start: LocalDateTime? = null,
+        end: LocalDateTime? = null,
+    ): Specification<Orders> = Specification { root, _, cb ->
+        val predicates = mutableListOf<jakarta.persistence.criteria.Predicate>()
+        predicates.add(cb.equal(root.get<com.deuktemsiru.entity.Store>("store"), store))
+        if (status != null) predicates.add(cb.equal(root.get<OrderStatus>("status"), status))
+        if (start != null) predicates.add(cb.greaterThanOrEqualTo(root.get("createdAt"), start))
+        if (end != null) predicates.add(cb.lessThan(root.get("createdAt"), end))
+        cb.and(*predicates.toTypedArray())
     }
 }

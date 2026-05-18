@@ -34,27 +34,24 @@ class NotificationService(
 
     @Transactional
     fun markAsRead(memberId: Long, notificationId: Long) {
-        val member = memberService.findMember(memberId)
-        val notification = notificationRepository.findById(notificationId)
-            .orElseThrow { NoSuchElementException("알림을 찾을 수 없습니다.") }
-        require(notification.member.memberId == member.memberId) { "접근 권한이 없습니다." }
+        val notification = findOwnedNotification(memberId, notificationId)
         notification.isRead = true
     }
 
     @Transactional
     fun markAllAsRead(memberId: Long) {
         val member = memberService.findMember(memberId)
-        notificationRepository.findByMemberOrderByCreatedAtDesc(member)
-            .filter { !it.isRead }
-            .forEach { it.isRead = true }
+        notificationRepository.markAllUnreadAsRead(member)
     }
 
     @Transactional
     fun deleteNotification(memberId: Long, notificationId: Long) {
-        val member = memberService.findMember(memberId)
-        val notification = notificationRepository.findById(notificationId)
-            .orElseThrow { NoSuchElementException("알림을 찾을 수 없습니다.") }
-        require(notification.member.memberId == member.memberId) { "접근 권한이 없습니다." }
+        val notification = findOwnedNotification(memberId, notificationId)
         notificationRepository.delete(notification)
     }
+
+    private fun findOwnedNotification(memberId: Long, notificationId: Long): Notification =
+        notificationRepository.findById(notificationId)
+            .orElseThrow { NoSuchElementException("알림을 찾을 수 없습니다.") }
+            .also { require(it.member.memberId == memberId) { "접근 권한이 없습니다." } }
 }

@@ -8,6 +8,11 @@ import org.springframework.data.domain.Pageable
 import org.springframework.data.jpa.repository.JpaRepository
 import org.springframework.data.jpa.repository.Query
 
+interface ReviewRatingSummary {
+    val reviewCount: Long
+    val ratingAvg: Double?
+}
+
 interface ReviewRepository : JpaRepository<Review, Long> {
     fun findByStoreAndIsDeletedFalseOrderByCreatedAtDesc(store: Store, pageable: Pageable): List<Review>
     fun existsByConsumerAndOrder(consumer: Member, order: Orders): Boolean
@@ -18,4 +23,13 @@ interface ReviewRepository : JpaRepository<Review, Long> {
 
     @Query("SELECT COUNT(r) FROM Review r WHERE r.store = :store AND r.isDeleted = false")
     fun countByStoreAndIsDeletedFalse(store: Store): Long
+
+    @Query(
+        """
+        SELECT COUNT(r) as reviewCount, AVG(r.rating) as ratingAvg
+        FROM Review r
+        WHERE r.store = :store AND r.isDeleted = false
+        """
+    )
+    fun summarizeRatingByStore(store: Store): ReviewRatingSummary
 }

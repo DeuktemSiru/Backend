@@ -2,7 +2,7 @@ package com.deuktemsiru.controller.wishlist
 
 import com.deuktemsiru.common.ApiResponse
 import com.deuktemsiru.dto.WishlistItemResponse
-import com.deuktemsiru.security.AuthContext
+import com.deuktemsiru.security.CurrentMemberId
 import com.deuktemsiru.service.StoreService
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
@@ -15,7 +15,6 @@ data class WishlistListResponse(val wishlists: List<WishlistItemResponse>)
 @RequestMapping("/api/v1/wishlist")
 class WishlistController(
     private val storeService: StoreService,
-    private val authContext: AuthContext,
 ) {
     /**
      * POST /api/v1/wishlist/{storeId}
@@ -23,9 +22,9 @@ class WishlistController(
      */
     @PostMapping("/{storeId}")
     fun toggleWishlist(
+        @CurrentMemberId memberId: Long,
         @PathVariable storeId: Long,
     ): ResponseEntity<ApiResponse<WishlistToggleResponse>> {
-        val memberId = authContext.getCurrentMemberId()
         val isWishlisted = storeService.toggleWishlist(memberId, storeId)
         val status = if (isWishlisted) HttpStatus.CREATED else HttpStatus.OK
         val message = if (isWishlisted) "찜 등록 성공" else "찜 해제 성공"
@@ -39,9 +38,9 @@ class WishlistController(
      */
     @DeleteMapping("/{storeId}")
     fun removeWishlist(
+        @CurrentMemberId memberId: Long,
         @PathVariable storeId: Long,
     ): ApiResponse<Unit> {
-        val memberId = authContext.getCurrentMemberId()
         storeService.removeWishlist(memberId, storeId)
         return ApiResponse.success(Unit, "찜 해제 성공")
     }
@@ -52,10 +51,10 @@ class WishlistController(
      */
     @GetMapping
     fun getWishlist(
+        @CurrentMemberId memberId: Long,
         @RequestParam(defaultValue = "0") page: Int,
         @RequestParam(defaultValue = "20") size: Int,
     ): ApiResponse<WishlistListResponse> {
-        val memberId = authContext.getCurrentMemberId()
         val wishlists = storeService.getWishlistBuyer(memberId)
         return ApiResponse.success(WishlistListResponse(wishlists))
     }

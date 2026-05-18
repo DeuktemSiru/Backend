@@ -5,11 +5,13 @@ import com.deuktemsiru.repository.*
 import org.slf4j.LoggerFactory
 import org.springframework.boot.ApplicationArguments
 import org.springframework.boot.ApplicationRunner
+import org.springframework.context.annotation.Profile
 import org.springframework.stereotype.Component
 import java.time.LocalDate
 import java.time.LocalTime
 
 @Component
+@Profile("!prod")
 class DataInitializer(
     private val memberRepository: MemberRepository,
     private val storeRepository: StoreRepository,
@@ -28,36 +30,15 @@ class DataInitializer(
             return
         }
 
-        val sellerSeeds = listOf(
+        val sellers = listOf(
             SellerSeed("kakao_seller_1", "bakery@test.com", "김영희", "오이도굽는집"),
             SellerSeed("kakao_seller_2", "cafe@siheung.test", "박민준", "배곧로스터리"),
             SellerSeed("kakao_seller_3", "bunsik@siheung.test", "이수진", "정왕시장분식"),
             SellerSeed("kakao_seller_4", "dosirak@siheung.test", "최하늘", "은행동찬찬도시락"),
             SellerSeed("kakao_seller_5", "mart@siheung.test", "정다은", "목감우리반찬"),
-        )
-        val sellers = sellerSeeds.map { seed ->
-            memberRepository.save(
-                Member(
-                    provider = MemberProvider.KAKAO,
-                    providerId = seed.providerId,
-                    email = seed.email,
-                    name = seed.name,
-                    nickname = seed.nickname,
-                    role = MemberRole.SELLER,
-                )
-            )
-        }
+        ).map { createSeller(it) }
 
-        memberRepository.save(
-            Member(
-                provider = MemberProvider.KAKAO,
-                providerId = "kakao_buyer_1",
-                email = "buyer@test.com",
-                name = "홍길동",
-                nickname = "시흥득템러",
-                role = MemberRole.CONSUMER,
-            )
-        )
+        createConsumer()
 
         val storeInfos = listOf(
             StoreSeed(
@@ -172,51 +153,7 @@ class DataInitializer(
             ),
         )
 
-        storeInfos.forEach { seed ->
-            val store = storeRepository.save(
-                Store(
-                    owner = seed.owner,
-                    name = seed.name,
-                    description = seed.description,
-                    address = seed.address,
-                    latitude = seed.latitude,
-                    longitude = seed.longitude,
-                    phone = seed.phone,
-                    ratingAvg = seed.ratingAvg,
-                    reviewCount = seed.reviewCount,
-                    isVerified = true,
-                )
-            )
-            storeCategoryRepository.save(StoreCategory(store = store, category = seed.category))
-
-            val menuItem = menuItemRepository.save(
-                MenuItem(
-                    store = store,
-                    name = seed.menuName,
-                    description = seed.menuDescription,
-                    originalPrice = seed.originalPrice,
-                    allergenInfo = seed.allergenInfo,
-                )
-            )
-            productRepository.save(
-                Product(
-                    store = store,
-                    menuItem = menuItem,
-                    name = "오늘 마감할인 ${menuItem.name}",
-                    description = seed.menuDescription,
-                    originalPrice = seed.originalPrice,
-                    discountPrice = seed.discountPrice,
-                    quantityTotal = seed.quantityTotal,
-                    quantityRemaining = seed.quantityRemaining,
-                    allergenInfo = seed.allergenInfo,
-                    madeAt = "오늘 오전 제조",
-                    pickupStart = seed.pickupStart,
-                    pickupEnd = seed.pickupEnd,
-                    availableDate = LocalDate.now(),
-                    carbonSavedKg = seed.carbonSavedKg,
-                )
-            )
-        }
+        storeInfos.forEach { createStoreWithMenuAndProduct(it) }
 
         log.info("=== 샘플 데이터 초기화 완료 ===")
     }
@@ -230,7 +167,86 @@ class DataInitializer(
                 }
             }
         }
+        val normalizedProducts = productRepository.findAll()
+            .filter { it.name.startsWith("오늘 마감할인 ") }
+            .onEach { product ->
+                product.availableDate = LocalDate.now()
+                if (product.quantityRemaining > 0 && product.status != ProductStatus.DELETED) {
+                    product.status = ProductStatus.AVAILABLE
+                }
+            }
+        productRepository.saveAll(normalizedProducts)
     }
+
+    private fun createSeller(seed: SellerSeed): Member =
+        memberRepository.save(
+            Member(
+                provider = MemberProvider.KAKAO,
+                providerId = seed.providerId,
+                email = seed.email,
+                name = seed.name,
+                nickname = seed.nickname,
+                role = MemberRole.SELLER,
+            )
+        )
+
+    private fun createConsumer(): Member =
+        memberRepository.save(
+            Member(
+                provider = MemberProvider.KAKAO,
+                providerId = "kakao_buyer_1",
+                email = "buyer@test.com",
+                name = "홍길동",
+                nickname = "시흥득템러",
+                role = MemberRole.CONSUMER,
+            )
+        )
+
+    private fun createStoreWithMenuAndProduct(seed: StoreSeed) {
+        val store = storeRepository.save(seed.toStore())
+        storeCategoryRepository.save(StoreCategory(store = store, category = seed.category))
+
+        val menuItem = menuItemRepository.save(seed.toMenuItem(store))
+        productRepository.save(seed.toProduct(store, menuItem))
+    }
+
+    private fun StoreSeed.toStore() = Store(
+        owner = owner,
+        name = name,
+        description = description,
+        address = address,
+        latitude = latitude,
+        longitude = longitude,
+        phone = phone,
+        ratingAvg = ratingAvg,
+        reviewCount = reviewCount,
+        isVerified = true,
+    )
+
+    private fun StoreSeed.toMenuItem(store: Store) = MenuItem(
+        store = store,
+        name = menuName,
+        description = menuDescription,
+        originalPrice = originalPrice,
+        allergenInfo = allergenInfo,
+    )
+
+    private fun StoreSeed.toProduct(store: Store, menuItem: MenuItem) = Product(
+        store = store,
+        menuItem = menuItem,
+        name = "오늘 마감할인 ${menuItem.name}",
+        description = menuDescription,
+        originalPrice = originalPrice,
+        discountPrice = discountPrice,
+        quantityTotal = quantityTotal,
+        quantityRemaining = quantityRemaining,
+        allergenInfo = allergenInfo,
+        madeAt = "오늘 오전 제조",
+        pickupStart = pickupStart,
+        pickupEnd = pickupEnd,
+        availableDate = LocalDate.now(),
+        carbonSavedKg = carbonSavedKg,
+    )
 
     private data class SellerSeed(
         val providerId: String,

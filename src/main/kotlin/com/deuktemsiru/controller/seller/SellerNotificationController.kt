@@ -3,9 +3,8 @@ package com.deuktemsiru.controller.seller
 import com.deuktemsiru.common.ApiResponse
 import com.deuktemsiru.dto.SendNotificationRequest
 import com.deuktemsiru.dto.SellerNotificationResponse
-import com.deuktemsiru.security.AuthContext
+import com.deuktemsiru.security.CurrentMemberId
 import com.deuktemsiru.service.SellerAppService
-import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.*
 
@@ -15,7 +14,6 @@ import org.springframework.web.bind.annotation.*
 @RequestMapping("/api/v1/sellers/notifications")
 class SellerNotificationController(
     private val sellerAppService: SellerAppService,
-    private val authContext: AuthContext,
 ) {
 
     /**
@@ -24,17 +22,15 @@ class SellerNotificationController(
      */
     @PostMapping
     fun sendNotification(
+        @CurrentMemberId sellerId: Long,
         @RequestBody req: SendNotificationRequest,
     ): ResponseEntity<ApiResponse<SellerNotificationResponse>> {
-        val sellerId = authContext.getCurrentMemberId()
         val notification = sellerAppService.sendNotification(sellerId, req)
-        return ResponseEntity.status(HttpStatus.CREATED)
-            .body(ApiResponse.created(notification, "알림이 발송되었습니다."))
+        return ApiResponse.createdEntity(notification, "알림이 발송되었습니다.")
     }
 
     @GetMapping
-    fun getNotifications(): ApiResponse<List<SellerNotificationResponse>> {
-        val sellerId = authContext.getCurrentMemberId()
+    fun getNotifications(@CurrentMemberId sellerId: Long): ApiResponse<List<SellerNotificationResponse>> {
         return ApiResponse.success(sellerAppService.getSellerNotifications(sellerId))
     }
 }

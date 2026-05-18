@@ -1,7 +1,7 @@
 package com.deuktemsiru.controller.fcm
 
 import com.deuktemsiru.common.ApiResponse
-import com.deuktemsiru.security.AuthContext
+import com.deuktemsiru.security.CurrentMemberId
 import com.deuktemsiru.service.FcmService
 import org.springframework.web.bind.annotation.*
 
@@ -18,7 +18,6 @@ data class FcmTokenRequest(
 @RequestMapping("/api/v1/fcm")
 class FcmController(
     private val fcmService: FcmService,
-    private val authContext: AuthContext,
 ) {
 
     /**
@@ -27,9 +26,10 @@ class FcmController(
      */
     @PostMapping("/token")
     fun registerFcmToken(
+        @CurrentMemberId memberId: Long,
         @RequestBody req: FcmTokenRequest,
     ): ApiResponse<Unit> {
-        fcmService.registerToken(authContext.getCurrentMemberId(), req.token, req.deviceInfo)
+        fcmService.registerToken(memberId, req.token, req.deviceInfo)
         return ApiResponse.success(Unit, "FCM 토큰이 등록되었습니다.")
     }
 }

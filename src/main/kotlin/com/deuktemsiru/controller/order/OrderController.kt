@@ -5,9 +5,8 @@ import com.deuktemsiru.dto.CreateOrderRequest
 import com.deuktemsiru.dto.CreateOrderResponse
 import com.deuktemsiru.dto.OrderDetailResponse
 import com.deuktemsiru.dto.OrderListItemResponse
-import com.deuktemsiru.security.AuthContext
+import com.deuktemsiru.security.CurrentMemberId
 import com.deuktemsiru.service.OrderService
-import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.*
 
@@ -15,7 +14,6 @@ import org.springframework.web.bind.annotation.*
 @RequestMapping("/api/v1/orders")
 class OrderController(
     private val orderService: OrderService,
-    private val authContext: AuthContext,
 ) {
     /**
      * POST /api/v1/orders
@@ -23,12 +21,11 @@ class OrderController(
      */
     @PostMapping
     fun createOrder(
+        @CurrentMemberId memberId: Long,
         @RequestBody req: CreateOrderRequest,
     ): ResponseEntity<ApiResponse<CreateOrderResponse>> {
-        val memberId = authContext.getCurrentMemberId()
         val order = orderService.createOrder(memberId, req)
-        return ResponseEntity.status(HttpStatus.CREATED)
-            .body(ApiResponse.created(order, "주문 성공"))
+        return ApiResponse.createdEntity(order, "주문 성공")
     }
 
     /**
@@ -37,11 +34,11 @@ class OrderController(
      */
     @GetMapping("/my")
     fun getMyOrders(
+        @CurrentMemberId memberId: Long,
         @RequestParam(required = false) status: String?,
         @RequestParam(defaultValue = "0") page: Int,
         @RequestParam(defaultValue = "20") size: Int,
     ): ApiResponse<List<OrderListItemResponse>> {
-        val memberId = authContext.getCurrentMemberId()
         return ApiResponse.success(orderService.getMyOrders(memberId, status, page, size))
     }
 
@@ -51,11 +48,11 @@ class OrderController(
      */
     @GetMapping
     fun getMyOrdersCompat(
+        @CurrentMemberId memberId: Long,
         @RequestParam(required = false) status: String?,
         @RequestParam(defaultValue = "0") page: Int,
         @RequestParam(defaultValue = "20") size: Int,
     ): ApiResponse<List<OrderListItemResponse>> {
-        val memberId = authContext.getCurrentMemberId()
         return ApiResponse.success(orderService.getMyOrders(memberId, status, page, size))
     }
 
@@ -65,9 +62,9 @@ class OrderController(
      */
     @GetMapping("/{orderId}")
     fun getOrder(
+        @CurrentMemberId memberId: Long,
         @PathVariable orderId: Long,
     ): ApiResponse<OrderDetailResponse> {
-        val memberId = authContext.getCurrentMemberId()
         return ApiResponse.success(orderService.getOrder(memberId, orderId))
     }
 
@@ -77,9 +74,9 @@ class OrderController(
      */
     @PatchMapping("/{orderId}/cancel")
     fun cancelOrder(
+        @CurrentMemberId memberId: Long,
         @PathVariable orderId: Long,
     ): ApiResponse<OrderDetailResponse> {
-        val memberId = authContext.getCurrentMemberId()
         return ApiResponse.success(orderService.cancelOrder(memberId, orderId), "주문이 취소되었습니다.")
     }
 }

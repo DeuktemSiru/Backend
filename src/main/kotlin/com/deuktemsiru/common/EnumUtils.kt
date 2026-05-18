@@ -4,3 +4,6 @@ package com.deuktemsiru.common
 inline fun <reified T : Enum<T>> String.toEnumOrThrow(fieldName: String = "값"): T =
     runCatching { enumValueOf<T>(this.uppercase()) }
         .getOrElse { throw IllegalArgumentException("지원하지 않는 $fieldName: $this") }
+
+inline fun <reified T : Enum<T>> String.toEnumOrNull(): T? =
+    runCatching { enumValueOf<T>(this.uppercase()) }.getOrNull()

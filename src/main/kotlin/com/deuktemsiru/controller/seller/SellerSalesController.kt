@@ -1,10 +1,12 @@
 package com.deuktemsiru.controller.seller
 
 import com.deuktemsiru.common.ApiResponse
+import com.deuktemsiru.common.toLocalDateOrThrow
 import com.deuktemsiru.dto.SalesResponse
-import com.deuktemsiru.security.AuthContext
+import com.deuktemsiru.security.CurrentMemberId
 import com.deuktemsiru.service.OrderService
 import org.springframework.web.bind.annotation.*
+import java.time.Clock
 import java.time.LocalDate
 
 // ── Controller ────────────────────────────────────────────────────────────────
@@ -13,7 +15,7 @@ import java.time.LocalDate
 @RequestMapping("/api/v1/sellers/sales")
 class SellerSalesController(
     private val orderService: OrderService,
-    private val authContext: AuthContext,
+    private val clock: Clock,
 ) {
 
     /**
@@ -27,13 +29,11 @@ class SellerSalesController(
      */
     @GetMapping("/summary")
     fun getSalesSummary(
+        @CurrentMemberId sellerId: Long,
         @RequestParam(defaultValue = "DAY") period: String,
         @RequestParam(required = false) date: String?,
     ): ApiResponse<SalesResponse> {
-        val sellerId = authContext.getCurrentMemberId()
-        val targetDate = date
-            ?.let { runCatching { LocalDate.parse(it) }.getOrElse { throw IllegalArgumentException("날짜 형식은 yyyy-MM-dd 이어야 합니다.") } }
-            ?: LocalDate.now()
+        val targetDate = date?.toLocalDateOrThrow() ?: LocalDate.now(clock)
         val stats = orderService.getSalesStats(sellerId, period, targetDate)
         return ApiResponse.success(stats)
     }

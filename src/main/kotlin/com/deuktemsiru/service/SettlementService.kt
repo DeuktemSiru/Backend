@@ -1,7 +1,7 @@
 package com.deuktemsiru.service
 
-import com.deuktemsiru.controller.seller.SettlementItem
-import com.deuktemsiru.controller.seller.SettlementListResponse
+import com.deuktemsiru.dto.SettlementItem
+import com.deuktemsiru.dto.SettlementListResponse
 import com.deuktemsiru.entity.OrderStatus
 import com.deuktemsiru.entity.PaymentMethod
 import com.deuktemsiru.entity.Settlement
@@ -9,9 +9,9 @@ import com.deuktemsiru.entity.SettlementStatus
 import com.deuktemsiru.entity.Store
 import com.deuktemsiru.repository.OrderRepository
 import com.deuktemsiru.repository.SettlementRepository
-import com.deuktemsiru.repository.StoreRepository
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import java.time.Clock
 import java.time.LocalDate
 import java.time.temporal.TemporalAdjusters
 import kotlin.math.roundToInt
@@ -21,35 +21,27 @@ import kotlin.math.roundToInt
 class SettlementService(
     private val settlementRepository: SettlementRepository,
     private val orderRepository: OrderRepository,
-    private val storeRepository: StoreRepository,
-    private val memberService: MemberService,
+    private val storeOwnershipService: StoreOwnershipService,
+    private val clock: Clock,
 ) {
     private val platformFeeRate = 0.03
 
     fun getSettlements(sellerId: Long, year: Int, month: Int): SettlementListResponse {
-        val seller = memberService.findMember(sellerId)
-        val store = storeRepository.findByOwner(seller)
-            .orElseThrow { NoSuchElementException("등록된 가게가 없습니다.") }
+        val store = storeOwnershipService.findSellerStoreOrNull(sellerId)
+            ?: return SettlementListResponse(emptyList())
 
         val targetStart = LocalDate.of(year, month, 1)
         val targetEnd = targetStart.with(TemporalAdjusters.lastDayOfMonth())
-        val now = LocalDate.now()
+        val now = LocalDate.now(clock)
 
         // DB에 저장된 정산 내역 중 해당 월에 겹치는 항목만 조회
-        val saved = settlementRepository.findByStoreOrderByPeriodStartDesc(store)
-            .filter { !it.periodEnd.isBefore(targetStart) && !it.periodStart.isAfter(targetEnd) }
-            .map {
-                SettlementItem(
-                    settlementId = it.settlementId,
-                    periodStart = it.periodStart.toString(),
-                    periodEnd = it.periodEnd.toString(),
-                    totalSales = it.totalAmount,
-                    platformFee = it.feeAmount,
-                    settlementAmount = it.netAmount,
-                    status = it.status.name,
-                    settledAt = it.settledAt?.toString(),
-                )
-            }
+        val saved = settlementRepository
+            .findByStoreAndPeriodEndGreaterThanEqualAndPeriodStartLessThanEqualOrderByPeriodStartDesc(
+                store,
+                targetStart,
+                targetEnd,
+            )
+            .map { SettlementItem.from(it) }
 
         // 요청 월이 현재 월이면 실시간 집계 항목을 상단에 추가
         val isCurrentMonth = year == now.year && month == now.monthValue
@@ -60,13 +52,15 @@ class SettlementService(
 
     @Transactional
     fun requestWithdrawal(sellerId: Long, year: Int, month: Int): SettlementItem {
-        val seller = memberService.findMember(sellerId)
-        val store = storeRepository.findByOwner(seller)
-            .orElseThrow { NoSuchElementException("등록된 가게가 없습니다.") }
+        val store = storeOwnershipService.findSellerStore(sellerId)
         val start = LocalDate.of(year, month, 1)
         val end = start.with(TemporalAdjusters.lastDayOfMonth())
-        val existing = settlementRepository.findByStoreOrderByPeriodStartDesc(store)
-            .firstOrNull { it.periodStart == start && it.periodEnd == end && it.status == SettlementStatus.PENDING }
+        val existing = settlementRepository.findFirstByStoreAndPeriodStartAndPeriodEndAndStatus(
+            store,
+            start,
+            end,
+            SettlementStatus.PENDING,
+        )
         val settlement = existing ?: run {
             val computed = currentMonthSettlement(store, start, end)
                 ?: throw IllegalStateException("출금 신청 가능한 정산 금액이 없습니다.")
@@ -82,25 +76,16 @@ class SettlementService(
                 )
             )
         }
-        return SettlementItem(
-            settlementId = settlement.settlementId,
-            periodStart = settlement.periodStart.toString(),
-            periodEnd = settlement.periodEnd.toString(),
-            totalSales = settlement.totalAmount,
-            platformFee = settlement.feeAmount,
-            settlementAmount = settlement.netAmount,
-            status = settlement.status.name,
-            settledAt = settlement.settledAt?.toString(),
-        )
+        return SettlementItem.from(settlement)
     }
 
     private fun currentMonthSettlement(store: Store, start: LocalDate, end: LocalDate): SettlementItem? {
-        val totalSales = orderRepository.findByStoreAndStatus(store, OrderStatus.PICKED_UP)
-            .filter {
-                val date = it.createdAt.toLocalDate()
-                !date.isBefore(start) && !date.isAfter(end)
-            }
-            .sumOf { it.totalPrice }
+        val totalSales = orderRepository.sumTotalPriceByStoreAndStatusBetween(
+            store,
+            OrderStatus.PICKED_UP,
+            start.atStartOfDay(),
+            end.plusDays(1).atStartOfDay(),
+        ).toInt()
         if (totalSales == 0) return null
 
         val fee = (totalSales * platformFeeRate).roundToInt()

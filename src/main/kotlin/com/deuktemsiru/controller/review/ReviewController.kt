@@ -1,10 +1,9 @@
 package com.deuktemsiru.controller.review
 
 import com.deuktemsiru.common.ApiResponse
-import com.deuktemsiru.security.AuthContext
+import com.deuktemsiru.security.CurrentMemberId
 import com.deuktemsiru.service.ReviewCreateRequest
 import com.deuktemsiru.service.ReviewService
-import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.*
 
@@ -12,7 +11,6 @@ import org.springframework.web.bind.annotation.*
 @RequestMapping("/api/v1/reviews")
 class ReviewController(
     private val reviewService: ReviewService,
-    private val authContext: AuthContext,
 ) {
     /**
      * POST /api/v1/reviews
@@ -20,12 +18,11 @@ class ReviewController(
      */
     @PostMapping
     fun createReview(
+        @CurrentMemberId memberId: Long,
         @RequestBody req: ReviewCreateRequest,
     ): ResponseEntity<ApiResponse<Unit>> {
-        val memberId = authContext.getCurrentMemberId()
         reviewService.createReview(memberId, req)
-        return ResponseEntity.status(HttpStatus.CREATED)
-            .body(ApiResponse.created(Unit, "리뷰가 작성되었습니다."))
+        return ApiResponse.createdEntity(Unit, "리뷰가 작성되었습니다.")
     }
 
     /**
@@ -34,9 +31,9 @@ class ReviewController(
      */
     @DeleteMapping("/{reviewId}")
     fun deleteReview(
+        @CurrentMemberId memberId: Long,
         @PathVariable reviewId: Long,
     ): ApiResponse<Unit> {
-        val memberId = authContext.getCurrentMemberId()
         reviewService.deleteReview(reviewId, memberId)
         return ApiResponse.success(Unit, "리뷰가 삭제되었습니다.")
     }

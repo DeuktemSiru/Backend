@@ -2,9 +2,8 @@ package com.deuktemsiru.controller.seller
 
 import com.deuktemsiru.common.ApiResponse
 import com.deuktemsiru.entity.BusinessInfo
-import com.deuktemsiru.security.AuthContext
+import com.deuktemsiru.security.CurrentMemberId
 import com.deuktemsiru.service.SellerAppService
-import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.*
 
@@ -35,7 +34,6 @@ data class BusinessInfoResponse(
 @RequestMapping("/api/v1/sellers")
 class SellerAuthController(
     private val sellerAppService: SellerAppService,
-    private val authContext: AuthContext,
 ) {
     /**
      * POST /api/v1/sellers/business-info
@@ -43,11 +41,10 @@ class SellerAuthController(
      */
     @PostMapping("/business-info")
     fun registerBusinessInfo(
+        @CurrentMemberId sellerId: Long,
         @RequestBody req: BusinessInfoRequest,
     ): ResponseEntity<ApiResponse<BusinessInfoResponse>> {
-        val sellerId = authContext.getCurrentMemberId()
         val info = sellerAppService.registerBusinessInfo(sellerId, req.businessNumber, req.businessName)
-        return ResponseEntity.status(HttpStatus.CREATED)
-            .body(ApiResponse.created(BusinessInfoResponse.from(info), "사업자 정보 등록 성공"))
+        return ApiResponse.createdEntity(BusinessInfoResponse.from(info), "사업자 정보 등록 성공")
     }
 }

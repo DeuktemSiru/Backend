@@ -2,7 +2,7 @@ package com.deuktemsiru.controller.notification
 
 import com.deuktemsiru.common.ApiResponse
 import com.deuktemsiru.dto.NotificationResponse
-import com.deuktemsiru.security.AuthContext
+import com.deuktemsiru.security.CurrentMemberId
 import com.deuktemsiru.service.NotificationService
 import org.springframework.web.bind.annotation.*
 
@@ -15,7 +15,6 @@ data class NotificationListResponse(
 @RequestMapping("/api/v1/notifications")
 class NotificationController(
     private val notificationService: NotificationService,
-    private val authContext: AuthContext,
 ) {
     /**
      * GET /api/v1/notifications
@@ -23,10 +22,10 @@ class NotificationController(
      */
     @GetMapping
     fun getMyNotifications(
+        @CurrentMemberId memberId: Long,
         @RequestParam(defaultValue = "0") page: Int,
         @RequestParam(defaultValue = "20") size: Int,
     ): ApiResponse<NotificationListResponse> {
-        val memberId = authContext.getCurrentMemberId()
         val result = notificationService.getNotifications(memberId)
         return ApiResponse.success(
             NotificationListResponse(
@@ -42,9 +41,9 @@ class NotificationController(
      */
     @PatchMapping("/{notificationId}/read")
     fun markAsRead(
+        @CurrentMemberId memberId: Long,
         @PathVariable notificationId: Long,
     ): ApiResponse<Unit> {
-        val memberId = authContext.getCurrentMemberId()
         notificationService.markAsRead(memberId, notificationId)
         return ApiResponse.success(Unit, "읽음 처리 완료")
     }
@@ -55,9 +54,9 @@ class NotificationController(
      */
     @DeleteMapping("/{notificationId}")
     fun deleteNotification(
+        @CurrentMemberId memberId: Long,
         @PathVariable notificationId: Long,
     ): ApiResponse<Unit> {
-        val memberId = authContext.getCurrentMemberId()
         notificationService.deleteNotification(memberId, notificationId)
         return ApiResponse.success(Unit, "알림 삭제 완료")
     }
