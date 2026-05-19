@@ -1,6 +1,7 @@
 package com.deuktemsiru.controller.product
 
 import com.deuktemsiru.common.ApiResponse
+import com.deuktemsiru.common.ok
 import com.deuktemsiru.dto.ProductDetailResponse
 import com.deuktemsiru.dto.ProductListItemResponse
 import com.deuktemsiru.service.StoreService
@@ -36,7 +37,7 @@ class ProductController(
             page = page,
             size = size,
         )
-        return ApiResponse.success(ProductListResponse(products = products.items, hasNext = products.hasNext))
+        return ok(ProductListResponse(products = products.items, hasNext = products.hasNext))
     }
 
     /**
@@ -47,6 +48,6 @@ class ProductController(
     fun getProduct(
         @PathVariable productId: Long,
     ): ApiResponse<ProductDetailResponse> {
-        return ApiResponse.success(storeService.getProductDetailBuyer(productId))
+        return ok(storeService.getProductDetailBuyer(productId))
     }
 }

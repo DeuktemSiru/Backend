@@ -78,8 +78,21 @@ class Product(
 
 enum class ProductStatus { AVAILABLE, SOLD_OUT, EXPIRED, DELETED }
 
+val Product.discountRate: Int
+    get() = if (originalPrice > 0) ((originalPrice - discountPrice) * 100 / originalPrice).coerceAtLeast(0) else 0
+
 fun Product.requirePurchasableOn(date: LocalDate, quantity: Int? = null) {
     require(status == ProductStatus.AVAILABLE) { "${name}은(는) 구매 불가 상태입니다." }
     require(availableDate == date) { "${name}은(는) 오늘 구매 가능한 상품이 아닙니다." }
     quantity?.let { require(quantityRemaining >= it) { "${name} 재고가 부족합니다." } }
+}
+
+fun Product.changeSaleStatus(nextStatus: ProductStatus) {
+    require(status != ProductStatus.DELETED) { "삭제된 상품은 상태를 변경할 수 없습니다." }
+    require(nextStatus != ProductStatus.DELETED) { "상품 삭제는 삭제 API를 사용해 주세요." }
+    require(nextStatus != ProductStatus.AVAILABLE || quantityRemaining > 0) {
+        "잔여 수량이 없는 상품은 먼저 수량을 수정해 주세요."
+    }
+    status = nextStatus
+    if (nextStatus == ProductStatus.SOLD_OUT) quantityRemaining = 0
 }

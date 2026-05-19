@@ -1,6 +1,8 @@
 package com.deuktemsiru.controller.order
 
 import com.deuktemsiru.common.ApiResponse
+import com.deuktemsiru.common.created
+import com.deuktemsiru.common.ok
 import com.deuktemsiru.dto.CreateOrderRequest
 import com.deuktemsiru.dto.CreateOrderResponse
 import com.deuktemsiru.dto.OrderDetailResponse
@@ -24,8 +26,7 @@ class OrderController(
         @CurrentMemberId memberId: Long,
         @RequestBody req: CreateOrderRequest,
     ): ResponseEntity<ApiResponse<CreateOrderResponse>> {
-        val order = orderService.createOrder(memberId, req)
-        return ApiResponse.createdEntity(order, "주문 성공")
+        return created(orderService.createOrder(memberId, req), "주문 성공")
     }
 
     /**
@@ -39,7 +40,7 @@ class OrderController(
         @RequestParam(defaultValue = "0") page: Int,
         @RequestParam(defaultValue = "20") size: Int,
     ): ApiResponse<List<OrderListItemResponse>> {
-        return ApiResponse.success(orderService.getMyOrders(memberId, status, page, size))
+        return myOrders(memberId, status, page, size)
     }
 
     /**
@@ -53,7 +54,7 @@ class OrderController(
         @RequestParam(defaultValue = "0") page: Int,
         @RequestParam(defaultValue = "20") size: Int,
     ): ApiResponse<List<OrderListItemResponse>> {
-        return ApiResponse.success(orderService.getMyOrders(memberId, status, page, size))
+        return myOrders(memberId, status, page, size)
     }
 
     /**
@@ -65,7 +66,7 @@ class OrderController(
         @CurrentMemberId memberId: Long,
         @PathVariable orderId: Long,
     ): ApiResponse<OrderDetailResponse> {
-        return ApiResponse.success(orderService.getOrder(memberId, orderId))
+        return ok(orderService.getOrder(memberId, orderId))
     }
 
     /**
@@ -77,6 +78,9 @@ class OrderController(
         @CurrentMemberId memberId: Long,
         @PathVariable orderId: Long,
     ): ApiResponse<OrderDetailResponse> {
-        return ApiResponse.success(orderService.cancelOrder(memberId, orderId), "주문이 취소되었습니다.")
+        return ok(orderService.cancelOrder(memberId, orderId), "주문이 취소되었습니다.")
     }
+
+    private fun myOrders(memberId: Long, status: String?, page: Int, size: Int): ApiResponse<List<OrderListItemResponse>> =
+        ok(orderService.getMyOrders(memberId, status, page, size))
 }

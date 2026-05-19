@@ -1,6 +1,7 @@
 package com.deuktemsiru.controller.store
 
 import com.deuktemsiru.common.ApiResponse
+import com.deuktemsiru.common.ok
 import com.deuktemsiru.dto.StoreMarkerResponse
 import com.deuktemsiru.service.StoreService
 import org.springframework.web.bind.annotation.*
@@ -23,7 +24,6 @@ class StoreMapController(
         @RequestParam(required = false, defaultValue = "2000") radius: Int,
         @RequestParam(required = false) category: String?,
     ): ApiResponse<StoreMapResponse> {
-        val markers = storeService.getMapMarkers(category)
-        return ApiResponse.success(StoreMapResponse(markers))
+        return ok(StoreMapResponse(storeService.getMapMarkers(category)))
     }
 }

@@ -30,7 +30,6 @@ import com.deuktemsiru.repository.OrderRepository
 import com.deuktemsiru.repository.PaymentRepository
 import com.deuktemsiru.repository.ProductRepository
 import org.springframework.data.domain.PageRequest
-import org.springframework.data.domain.Pageable
 import org.springframework.data.domain.Sort
 import org.springframework.data.jpa.domain.Specification
 import org.springframework.stereotype.Service
@@ -40,7 +39,6 @@ import java.time.Clock
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
-import java.time.temporal.TemporalAdjusters
 
 @Service
 @Transactional(readOnly = true)
@@ -156,7 +154,7 @@ class OrderService(
         page: Int = 0,
         size: Int = 20,
     ): List<OrderDetailResponse> {
-        val store = sellerStoreOrNull(sellerId) ?: return emptyList()
+        val store = storeOwnershipService.findSellerStoreOrNull(sellerId) ?: return emptyList()
         val targetStatus = status?.toEnumOrThrow<OrderStatus>("주문 상태")
         val pageable = safePage(page, size)
         val targetDate = date?.let { parseDate(it) }
@@ -176,7 +174,7 @@ class OrderService(
     }
 
     fun getStoreOrderEntities(sellerId: Long): List<Orders> {
-        return orderRepository.findByStoreOrderByCreatedAtDesc(sellerStore(sellerId))
+        return orderRepository.findByStoreOrderByCreatedAtDesc(storeOwnershipService.findSellerStore(sellerId))
     }
 
     @Transactional
@@ -242,12 +240,13 @@ class OrderService(
     )
 
     private fun aggregateSales(sellerId: Long, period: String, targetDate: LocalDate): SalesAggregation {
-        val (start, endExclusive) = salesWindow(period, targetDate)
-        val store = sellerStoreOrNull(sellerId)
+        val salesPeriod = SalesPeriod.from(period)
+        val (start, endExclusive) = salesPeriod.window(targetDate)
+        val store = storeOwnershipService.findSellerStoreOrNull(sellerId)
             ?: return SalesAggregation(
                 totalAmount = 0,
                 totalOrders = 0,
-                chartData = salesData(period, targetDate, emptyList()),
+                chartData = salesData(salesPeriod, targetDate, emptyList()),
                 topCounts = emptyList(),
             )
         val periodOrders = orderRepository.findAll(
@@ -256,18 +255,26 @@ class OrderService(
         return SalesAggregation(
             totalAmount = periodOrders.sumOf { it.totalPrice },
             totalOrders = periodOrders.size,
-            chartData = salesData(period, targetDate, periodOrders),
+            chartData = salesData(salesPeriod, targetDate, periodOrders),
             topCounts = topProductCounts(periodOrders),
         )
     }
 
-    private fun salesWindow(period: String, targetDate: LocalDate): Pair<LocalDate, LocalDate> =
-        when (period.uppercase()) {
-            "YEAR" -> targetDate.withDayOfYear(1).let { it to it.plusYears(1) }
-            "MONTH" -> targetDate.withDayOfMonth(1).let { it to it.plusMonths(1) }
-            "WEEK" -> targetDate.minusDays(targetDate.dayOfWeek.value.toLong() - 1).let { it to it.plusDays(7) }
-            else -> targetDate to targetDate.plusDays(1)
+    private enum class SalesPeriod {
+        DAY, WEEK, MONTH, YEAR;
+
+        fun window(targetDate: LocalDate): Pair<LocalDate, LocalDate> =
+            when (this) {
+                YEAR -> targetDate.withDayOfYear(1).let { it to it.plusYears(1) }
+                MONTH -> targetDate.withDayOfMonth(1).let { it to it.plusMonths(1) }
+                WEEK -> targetDate.minusDays(targetDate.dayOfWeek.value.toLong() - 1).let { it to it.plusDays(7) }
+                DAY -> targetDate to targetDate.plusDays(1)
+            }
+
+        companion object {
+            fun from(value: String) = entries.firstOrNull { it.name == value.uppercase() } ?: DAY
         }
+    }
 
     // ── 내부 유틸 ────────────────────────────────────────────────────────────
 
@@ -301,26 +308,24 @@ class OrderService(
         return paymentRepository.findLatestByOrderIds(orderIds).associateBy { it.order.orderId }
     }
 
-    private fun sellerStore(sellerId: Long): com.deuktemsiru.entity.Store =
-        storeOwnershipService.findSellerStore(sellerId)
-
-    private fun sellerStoreOrNull(sellerId: Long): com.deuktemsiru.entity.Store? =
-        storeOwnershipService.findSellerStoreOrNull(sellerId)
-
     private fun findConsumerOrder(consumerId: Long, orderId: Long): Orders =
-        findOrder(orderId) { it.consumer.memberId == consumerId }
+        findConsumerOrder(consumerId, orderId, forUpdate = false)
 
     private fun findConsumerOrderForUpdate(consumerId: Long, orderId: Long): Orders =
-        findOrder(orderId, forUpdate = true) { it.consumer.memberId == consumerId }
+        findConsumerOrder(consumerId, orderId, forUpdate = true)
 
-    private fun findSellerOrder(sellerId: Long, orderId: Long): Orders {
-        val store = sellerStore(sellerId)
-        return findOrder(orderId) { it.store.storeId == store.storeId }
-    }
+    private fun findConsumerOrder(consumerId: Long, orderId: Long, forUpdate: Boolean): Orders =
+        findOrder(orderId, forUpdate = forUpdate) { it.consumer.memberId == consumerId }
 
-    private fun findSellerOrderForUpdate(sellerId: Long, orderId: Long): Orders {
-        val store = sellerStore(sellerId)
-        return findOrder(orderId, forUpdate = true) { it.store.storeId == store.storeId }
+    private fun findSellerOrder(sellerId: Long, orderId: Long): Orders =
+        findSellerOrder(sellerId, orderId, forUpdate = false)
+
+    private fun findSellerOrderForUpdate(sellerId: Long, orderId: Long): Orders =
+        findSellerOrder(sellerId, orderId, forUpdate = true)
+
+    private fun findSellerOrder(sellerId: Long, orderId: Long, forUpdate: Boolean): Orders {
+        val store = storeOwnershipService.findSellerStore(sellerId)
+        return findOrder(orderId, forUpdate) { it.store.storeId == store.storeId }
     }
 
     private fun findOrder(orderId: Long, forUpdate: Boolean = false, canAccess: (Orders) -> Boolean): Orders {
@@ -331,7 +336,7 @@ class OrderService(
     }
 
     private fun findConfirmablePickupOrder(sellerId: Long, pickupCode: String): Orders {
-        val store = sellerStore(sellerId)
+        val store = storeOwnershipService.findSellerStore(sellerId)
         return (orderRepository.findByPickupCodeForUpdate(pickupCode)
             ?: throw NoSuchElementException("픽업 코드를 찾을 수 없습니다."))
             .also {
@@ -385,64 +390,44 @@ class OrderService(
         memberStatsRepository.save(stats)
     }
 
-    private fun salesData(period: String, targetDate: LocalDate, orders: List<Orders>): List<DailySales> =
-        when (period.uppercase()) {
-            "YEAR" -> yearlySales(targetDate.year, orders)
-            "MONTH" -> monthlySales(targetDate, orders)
-            "WEEK"  -> weeklySales(targetDate, orders)
-            else    -> dailySales(targetDate, orders)  // DAY (기본값)
+    private fun salesData(period: SalesPeriod, targetDate: LocalDate, orders: List<Orders>): List<DailySales> =
+        when (period) {
+            SalesPeriod.YEAR -> yearlySales(orders)
+            SalesPeriod.MONTH -> monthlySales(orders)
+            SalesPeriod.WEEK -> weeklySales(targetDate, orders)
+            SalesPeriod.DAY -> dailySales(orders)
         }
 
-    /**
-     * 시간 버킷(label, predicate) 목록을 받아 DailySales 리스트를 생성하는 공통 헬퍼.
-     * dailySales / weeklySales / monthlySales / yearlySales 모두 이 헬퍼를 통해 구성됩니다.
-     */
-    private fun buildSalesChart(
+    private fun <K> buildSalesChart(
         orders: List<Orders>,
-        buckets: List<Pair<String, (Orders) -> Boolean>>,
+        buckets: List<Pair<String, K>>,
+        keyOf: (Orders) -> K,
     ): List<DailySales> {
-        return buckets.map { (label, matches) ->
-            DailySales(label, orders.filter(matches).sumOf { it.totalPrice })
+        val amountsByBucket = orders.groupBy(keyOf).mapValues { (_, bucketOrders) ->
+            bucketOrders.sumOf { it.totalPrice }
         }
+        return buckets.map { (label, key) -> DailySales(label, amountsByBucket[key] ?: 0) }
     }
 
-    private fun dailySales(date: LocalDate, orders: List<Orders>): List<DailySales> =
-        buildSalesChart(orders, (0..23).map { hour ->
-            "${hour}시" to { order: Orders ->
-                order.createdAt.toLocalDate() == date && order.createdAt.hour == hour
-            }
-        })
+    private fun dailySales(orders: List<Orders>): List<DailySales> =
+        buildSalesChart(orders, (0..23).map { hour -> "${hour}시" to hour }) { it.createdAt.hour }
 
-    private fun monthlySales(targetMonth: LocalDate, orders: List<Orders>): List<DailySales> {
-        val firstDay = targetMonth.withDayOfMonth(1)
-        val lastDay = targetMonth.with(TemporalAdjusters.lastDayOfMonth())
-        val buckets = generateSequence(firstDay) { it.plusDays(7) }
-            .takeWhile { !it.isAfter(lastDay) }
-            .mapIndexed { index, weekStart ->
-                val weekEnd = minOf(weekStart.plusDays(6), lastDay)
-                "${index + 1}주" to { order: Orders ->
-                    val d = order.createdAt.toLocalDate()
-                    !d.isBefore(weekStart) && !d.isAfter(weekEnd)
-                }
-            }.toList()
-        return buildSalesChart(orders, buckets)
+    private fun monthlySales(orders: List<Orders>): List<DailySales> {
+        val buckets = (0..4).map { weekIndex -> "${weekIndex + 1}주" to weekIndex }
+        return buildSalesChart(orders, buckets) { ((it.createdAt.toLocalDate().dayOfMonth - 1) / 7).coerceAtMost(4) }
     }
 
-    private fun yearlySales(year: Int, orders: List<Orders>): List<DailySales> =
-        buildSalesChart(orders, (1..12).map { month ->
-            "${month}월" to { order: Orders ->
-                order.createdAt.year == year && order.createdAt.monthValue == month
-            }
-        })
+    private fun yearlySales(orders: List<Orders>): List<DailySales> =
+        buildSalesChart(orders, (1..12).map { month -> "${month}월" to month }) { it.createdAt.monthValue }
 
     private fun weeklySales(referenceDate: LocalDate, orders: List<Orders>): List<DailySales> {
         val startDay = referenceDate.minusDays(referenceDate.dayOfWeek.value.toLong() - 1) // 해당 주 월요일
         val formatter = DateTimeFormatter.ofPattern("MM/dd")
         val buckets = (0..6).map { i ->
             val date = startDay.plusDays(i.toLong())
-            date.format(formatter) to { order: Orders -> order.createdAt.toLocalDate() == date }
+            date.format(formatter) to date
         }
-        return buildSalesChart(orders, buckets)
+        return buildSalesChart(orders, buckets) { it.createdAt.toLocalDate() }
     }
 
     private fun topProductCounts(orders: List<Orders>): List<Pair<String, Int>> =
@@ -458,19 +443,23 @@ class OrderService(
     //     트랜잭션이 롤백되므로, 여기서는 DB 에 아직 없는 코드를 반환하는 것에 집중한다.
     //     반복 생성으로 충돌 확률을 최소화하고, 나머지는 unique constraint 에 의존한다.
     private fun generatePickupCode(): String {
-        repeat(10) {
-            val candidate = (1..6)
-                .map { PICKUP_CODE_CHARS[secureRandom.nextInt(PICKUP_CODE_CHARS.length)] }
-                .joinToString("")
-            if (!orderRepository.existsByPickupCode(candidate)) return candidate
-        }
-        // 6자리에서 반복 충돌 시 8자리 UUID 기반 코드로 재시도
-        repeat(5) {
-            val fallback = java.util.UUID.randomUUID().toString().replace("-", "").uppercase().take(8)
-            if (!orderRepository.existsByPickupCode(fallback)) return fallback
-        }
+        firstAvailablePickupCode(6, tries = 10, ::randomPickupCode)?.let { return it }
+        firstAvailablePickupCode(8, tries = 5, ::uuidPickupCode)?.let { return it }
         error("픽업 코드를 생성할 수 없습니다.")
     }
+
+    private fun firstAvailablePickupCode(length: Int, tries: Int, generator: (Int) -> String): String? =
+        generateSequence { generator(length) }
+            .take(tries)
+            .firstOrNull { !orderRepository.existsByPickupCode(it) }
+
+    private fun randomPickupCode(length: Int): String =
+        (1..length)
+            .map { PICKUP_CODE_CHARS[secureRandom.nextInt(PICKUP_CODE_CHARS.length)] }
+            .joinToString("")
+
+    private fun uuidPickupCode(length: Int): String =
+        java.util.UUID.randomUUID().toString().replace("-", "").uppercase().take(length)
 
     private fun canTransition(current: OrderStatus, next: OrderStatus): Boolean {
         if (current == next) return true

@@ -1,6 +1,7 @@
 package com.deuktemsiru.controller.fcm
 
 import com.deuktemsiru.common.ApiResponse
+import com.deuktemsiru.common.ok
 import com.deuktemsiru.security.CurrentMemberId
 import com.deuktemsiru.service.FcmService
 import org.springframework.web.bind.annotation.*
@@ -30,6 +31,6 @@ class FcmController(
         @RequestBody req: FcmTokenRequest,
     ): ApiResponse<Unit> {
         fcmService.registerToken(memberId, req.token, req.deviceInfo)
-        return ApiResponse.success(Unit, "FCM 토큰이 등록되었습니다.")
+        return ok(Unit, "FCM 토큰이 등록되었습니다.")
     }
 }

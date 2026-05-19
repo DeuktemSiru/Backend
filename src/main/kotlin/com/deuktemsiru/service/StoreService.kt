@@ -3,7 +3,9 @@ package com.deuktemsiru.service
 import com.deuktemsiru.common.toEnumOrNull
 import com.deuktemsiru.common.toEnumOrThrow
 import com.deuktemsiru.common.orNotFound
+import com.deuktemsiru.common.PageSlice
 import com.deuktemsiru.common.today
+import com.deuktemsiru.common.toPageSlice
 import com.deuktemsiru.dto.CreateStoreRequest
 import com.deuktemsiru.dto.ProductDetailResponse
 import com.deuktemsiru.dto.ProductListItemResponse
@@ -20,8 +22,8 @@ import com.deuktemsiru.entity.Store
 import com.deuktemsiru.entity.StoreCategory
 import com.deuktemsiru.entity.StoreImage
 import com.deuktemsiru.entity.Wishlist
+import com.deuktemsiru.entity.discountRate
 import com.deuktemsiru.entity.requirePurchasableOn
-import com.deuktemsiru.repository.MenuItemRepository
 import com.deuktemsiru.repository.ProductRepository
 import com.deuktemsiru.repository.StoreCategoryRepository
 import com.deuktemsiru.repository.StoreRepository
@@ -40,7 +42,6 @@ import kotlin.math.sqrt
 @Transactional(readOnly = true)
 class StoreService(
     private val storeRepository: StoreRepository,
-    private val menuItemRepository: MenuItemRepository,
     private val wishlistRepository: WishlistRepository,
     private val productRepository: ProductRepository,
     private val storeCategoryRepository: StoreCategoryRepository,
@@ -48,7 +49,10 @@ class StoreService(
     private val storeOwnershipService: StoreOwnershipService,
     private val clock: Clock,
 ) {
-    data class PageSlice<T>(val items: List<T>, val hasNext: Boolean)
+    private data class StoreDisplaySnapshot(
+        val availableProductCount: Int,
+        val representativeProduct: com.deuktemsiru.entity.Product?,
+    )
 
     // ── 기존 판매자용 ──────────────────────────────────────────────────────────
 
@@ -127,34 +131,31 @@ class StoreService(
         val allStores = findStoresByCategory(category)
 
         val today = today()
-        val productsByStore = displayProductsByStore(allStores, today)
-        val availableCounts = productsByStore.mapValues { (_, products) -> products.sumOf { it.quantityRemaining } }
-        val representativeProducts = productsByStore.mapValues { (_, products) -> representativeProduct(products) }
+        val displaySnapshots = displaySnapshots(allStores, today)
         val wishlistedStoreIds = wishlistedStoreIds(memberId, allStores)
         val hasLocation = hasLocation(latitude, longitude)
-        val filtered = if (keyword != null)
-            allStores.filter { it.name.contains(keyword, ignoreCase = true) }
-        else
-            allStores
+        val filtered = keyword
+            ?.let { value -> allStores.filter { it.name.contains(value, ignoreCase = true) } }
+            ?: allStores
 
         val withDistance = storesWithDistance(filtered, latitude, longitude, radius)
         val sorted = when (sort.lowercase()) {
             "rating" -> withDistance.sortedWith(compareByDescending<Pair<Store, Int>> { it.first.ratingAvg }.thenBy { it.second })
             "products", "available" -> withDistance.sortedByDescending {
-                availableCounts[it.first.storeId] ?: 0
+                displaySnapshots[it.first.storeId]?.availableProductCount ?: 0
             }
             else -> if (hasLocation) withDistance.sortedBy { it.second } else withDistance.sortedBy { it.first.name }
         }
         return sorted.map { (store, distance) ->
-            val count = availableCounts[store.storeId] ?: 0
+            val snapshot = displaySnapshots[store.storeId]
             StoreListItemResponse.from(
                 store,
-                availableProductCount = count,
+                availableProductCount = snapshot?.availableProductCount ?: 0,
                 distanceM = distance,
-                representativeProduct = representativeProducts[store.storeId],
+                representativeProduct = snapshot?.representativeProduct,
                 isWishlisted = store.storeId in wishlistedStoreIds,
             )
-        }.toPaged(page, size)
+        }.toPageSlice(page, size)
     }
 
     // ── 구매자 앱 가게 상세 (GET /stores/{storeId}) ───────────────────────────
@@ -169,9 +170,8 @@ class StoreService(
     private fun wishlistedStoreIds(memberId: Long?, stores: List<Store>): Set<Long> {
         val member = memberId?.let { memberService.findMember(it) } ?: return emptySet()
         if (stores.isEmpty()) return emptySet()
-        return stores
-            .filter { wishlistRepository.existsByMemberAndStore(member, it) }
-            .mapTo(mutableSetOf()) { it.storeId }
+        return wishlistRepository.findByMemberAndStoreIn(member, stores)
+            .mapTo(mutableSetOf()) { it.store.storeId }
     }
 
     private fun isWishlisted(memberId: Long?, store: Store): Boolean {
@@ -223,7 +223,7 @@ class StoreService(
             "quantity" -> products.sortedByDescending { it.quantityRemaining }
             else -> if (hasLocation) products.sortedBy { it.distanceM } else products.sortedBy { it.name }
         }
-        return sorted.toPaged(page, size)
+        return sorted.toPageSlice(page, size)
     }
 
     // ── 상품 상세 (GET /products/{productId}) ────────────────────────────────
@@ -241,14 +241,11 @@ class StoreService(
         val today = today()
         val wishlists = wishlistRepository.findByMember(member)
         val stores = wishlists.map { it.store }
-        val productsByStore = displayProductsByStore(stores, today)
-        val counts = productsByStore.mapValues { (_, products) -> products.sumOf { it.quantityRemaining } }
-        val representativeProducts = productsByStore.mapValues { (_, products) -> representativeProduct(products) }
+        val displaySnapshots = displaySnapshots(stores, today)
         return wishlists.map { w ->
             val store = w.store
-            val representativeProduct = representativeProducts[store.storeId]
-            val originalPrice = representativeProduct?.originalPrice ?: 0
-            val discountPrice = representativeProduct?.discountPrice ?: 0
+            val snapshot = displaySnapshots[store.storeId]
+            val representativeProduct = snapshot?.representativeProduct
             WishlistItemResponse(
                 wishlistId = w.wishlistId,
                 storeId = store.storeId,
@@ -256,14 +253,10 @@ class StoreService(
                 thumbnailUrl = store.thumbnailUrl,
                 category = store.categories.firstOrNull()?.category?.name ?: "OTHER",
                 ratingAvg = store.ratingAvg,
-                availableProductCount = counts[store.storeId] ?: 0,
-                representativeOriginalPrice = originalPrice,
-                representativeDiscountPrice = discountPrice,
-                representativeDiscountRate = if (originalPrice > 0) {
-                    ((originalPrice - discountPrice) * 100 / originalPrice).coerceAtLeast(0)
-                } else {
-                    0
-                },
+                availableProductCount = snapshot?.availableProductCount ?: 0,
+                representativeOriginalPrice = representativeProduct?.originalPrice ?: 0,
+                representativeDiscountPrice = representativeProduct?.discountPrice ?: 0,
+                representativeDiscountRate = representativeProduct?.discountRate ?: 0,
                 representativePickupEnd = representativeProduct?.pickupEnd?.toString(),
             )
         }
@@ -309,9 +302,6 @@ class StoreService(
         return store
     }
 
-    private fun availableProductCount(store: Store, date: LocalDate): Int =
-        availableProductCounts(listOf(store), date)[store.storeId] ?: 0
-
     private fun today(): LocalDate = clock.today()
 
     private fun findStoresByCategory(category: String?): List<Store> =
@@ -339,14 +329,19 @@ class StoreService(
             .associate { it.storeId to it.productCount.toInt() }
     }
 
+    private fun displaySnapshots(stores: List<Store>, date: LocalDate): Map<Long, StoreDisplaySnapshot> =
+        displayProductsByStore(stores, date).mapValues { (_, products) ->
+            StoreDisplaySnapshot(
+                availableProductCount = products.sumOf { it.quantityRemaining },
+                representativeProduct = representativeProduct(products),
+            )
+        }
+
     private fun displayProductsByStore(stores: List<Store>, date: LocalDate): Map<Long, List<com.deuktemsiru.entity.Product>> {
         if (stores.isEmpty()) return emptyMap()
-        val productsByStore = productRepository
+        return productRepository
             .findByStoreInAndAvailableDateAndStatusAndQuantityRemainingGreaterThan(stores, date, ProductStatus.AVAILABLE, 0)
             .groupBy { it.store.storeId }
-        return stores.associate { store ->
-            store.storeId to productsByStore[store.storeId].orEmpty()
-        }
     }
 
     private fun availableProducts(store: Store, date: LocalDate): List<com.deuktemsiru.entity.Product> =
@@ -383,12 +378,4 @@ class StoreService(
         return (earthRadiusMeters * c).roundToInt()
     }
 
-    /** S6: 리스트를 페이지 단위로 잘라 PageSlice 를 반환하는 확장 함수 */
-    private fun <T> List<T>.toPaged(page: Int, size: Int): PageSlice<T> {
-        val safeSize = size.coerceAtLeast(1)
-        val fromIndex = page.coerceAtLeast(0) * safeSize
-        if (fromIndex >= this.size) return PageSlice(emptyList(), false)
-        val toIndex = minOf(fromIndex + safeSize, this.size)
-        return PageSlice(subList(fromIndex, toIndex), toIndex < this.size)
-    }
 }

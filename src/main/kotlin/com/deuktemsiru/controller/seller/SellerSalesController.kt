@@ -1,6 +1,7 @@
 package com.deuktemsiru.controller.seller
 
 import com.deuktemsiru.common.ApiResponse
+import com.deuktemsiru.common.ok
 import com.deuktemsiru.common.toLocalDateOrThrow
 import com.deuktemsiru.dto.SalesResponse
 import com.deuktemsiru.security.CurrentMemberId
@@ -34,7 +35,6 @@ class SellerSalesController(
         @RequestParam(required = false) date: String?,
     ): ApiResponse<SalesResponse> {
         val targetDate = date?.toLocalDateOrThrow() ?: LocalDate.now(clock)
-        val stats = orderService.getSalesStats(sellerId, period, targetDate)
-        return ApiResponse.success(stats)
+        return ok(orderService.getSalesStats(sellerId, period, targetDate))
     }
 }

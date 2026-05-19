@@ -182,9 +182,6 @@ data class SellerNotificationResponse(
     val recipientCount: Int,
 )
 
-internal fun discountRate(originalPrice: Int, discountedPrice: Int): Int =
-    if (originalPrice > 0) ((1.0 - discountedPrice.toDouble() / originalPrice) * 100).toInt() else 0
-
 internal fun String.toProductStatus(): ProductStatus = toEnumOrThrow("판매 상태")
 
 internal data class ProductSummary(

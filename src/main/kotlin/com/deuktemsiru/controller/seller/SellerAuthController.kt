@@ -1,6 +1,7 @@
 package com.deuktemsiru.controller.seller
 
 import com.deuktemsiru.common.ApiResponse
+import com.deuktemsiru.common.created
 import com.deuktemsiru.entity.BusinessInfo
 import com.deuktemsiru.security.CurrentMemberId
 import com.deuktemsiru.service.SellerAppService
@@ -45,6 +46,6 @@ class SellerAuthController(
         @RequestBody req: BusinessInfoRequest,
     ): ResponseEntity<ApiResponse<BusinessInfoResponse>> {
         val info = sellerAppService.registerBusinessInfo(sellerId, req.businessNumber, req.businessName)
-        return ApiResponse.createdEntity(BusinessInfoResponse.from(info), "사업자 정보 등록 성공")
+        return created(BusinessInfoResponse.from(info), "사업자 정보 등록 성공")
     }
 }

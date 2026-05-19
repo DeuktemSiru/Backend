@@ -1,6 +1,8 @@
 package com.deuktemsiru.controller.seller
 
 import com.deuktemsiru.common.ApiResponse
+import com.deuktemsiru.common.created
+import com.deuktemsiru.common.ok
 import com.deuktemsiru.dto.SendNotificationRequest
 import com.deuktemsiru.dto.SellerNotificationResponse
 import com.deuktemsiru.security.CurrentMemberId
@@ -25,12 +27,11 @@ class SellerNotificationController(
         @CurrentMemberId sellerId: Long,
         @RequestBody req: SendNotificationRequest,
     ): ResponseEntity<ApiResponse<SellerNotificationResponse>> {
-        val notification = sellerAppService.sendNotification(sellerId, req)
-        return ApiResponse.createdEntity(notification, "알림이 발송되었습니다.")
+        return created(sellerAppService.sendNotification(sellerId, req), "알림이 발송되었습니다.")
     }
 
     @GetMapping
     fun getNotifications(@CurrentMemberId sellerId: Long): ApiResponse<List<SellerNotificationResponse>> {
-        return ApiResponse.success(sellerAppService.getSellerNotifications(sellerId))
+        return ok(sellerAppService.getSellerNotifications(sellerId))
     }
 }

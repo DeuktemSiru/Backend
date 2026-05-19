@@ -11,6 +11,7 @@ import com.deuktemsiru.entity.Product
 import com.deuktemsiru.entity.ProductImage
 import com.deuktemsiru.entity.ProductStatus
 import com.deuktemsiru.entity.Store
+import com.deuktemsiru.entity.changeSaleStatus
 import com.deuktemsiru.repository.BusinessInfoRepository
 import com.deuktemsiru.repository.MenuItemRepository
 import com.deuktemsiru.repository.NotificationRepository
@@ -48,7 +49,7 @@ class SellerAppService(
     // ── 가게 조회/수정 ────────────────────────────────────────────────────────
 
     fun getStore(sellerId: Long): SellerStoreResponse {
-        val store = sellerStore(sellerId)
+        val store = storeOwnershipService.findSellerStore(sellerId)
         val today = today()
         val todayProductCount = productRepository.countByStoreAndAvailableDateAndStatus(
             store, today, ProductStatus.AVAILABLE
@@ -71,7 +72,7 @@ class SellerAppService(
 
     @Transactional
     fun updateStore(sellerId: Long, req: SellerUpdateStoreRequest): SellerStoreResponse {
-        val store = sellerStore(sellerId)
+        val store = storeOwnershipService.findSellerStore(sellerId)
         req.description?.let { store.description = it }
         req.address?.takeIf { it.isNotBlank() }?.let { store.address = it }
         req.phone?.let { store.phone = it }
@@ -85,7 +86,7 @@ class SellerAppService(
     // ── 상품 관리 ─────────────────────────────────────────────────────────────
 
     fun getProducts(sellerId: Long, date: LocalDate? = null, status: String? = null): List<SellerSaleItemResponse> {
-        val store = sellerStoreOrNull(sellerId) ?: return emptyList()
+        val store = storeOwnershipService.findSellerStoreOrNull(sellerId) ?: return emptyList()
         val targetDate = date ?: today()
         val products = if (status != null) {
             val statusEnum = status.toProductStatus()
@@ -99,17 +100,21 @@ class SellerAppService(
 
     @Transactional
     fun createProduct(sellerId: Long, req: SaleItemRequest): SellerSaleItemResponse {
-        return SellerSaleItemResponse.from(createProductEntity(sellerId, req))
+        return createProduct(sellerId, req, emptyList())
+    }
+
+    private fun createProduct(sellerId: Long, req: SaleItemRequest, images: List<MultipartFile>): SellerSaleItemResponse {
+        val product = createProductEntity(sellerId, req)
+        product.addImages(images)
+        return SellerSaleItemResponse.from(product)
     }
 
     private fun createProductEntity(sellerId: Long, req: SaleItemRequest): Product {
         require(req.name.isNotBlank()) { "상품 이름을 입력해 주세요." }
-        require(req.originalPrice > 0) { "정상가는 1원 이상이어야 합니다." }
         require(req.quantityTotal > 0) { "판매 수량은 1개 이상이어야 합니다." }
-        require(req.discountPrice > 0) { "할인가는 1원 이상이어야 합니다." }
-        require(req.discountPrice < req.originalPrice) { "할인가는 정가보다 낮아야 합니다." }
+        validatePrice(req.originalPrice, req.discountPrice)
 
-        val store = sellerStore(sellerId)
+        val store = storeOwnershipService.findSellerStore(sellerId)
         val menuItem = req.menuItemId?.let { findSellerMenu(store, it) }
 
         val pickupStart = parsePickupTime(req.pickupStart, "픽업 시작 시간")
@@ -142,43 +147,26 @@ class SellerAppService(
         req: SaleItemRequest,
         images: List<MultipartFile>,
     ): SellerSaleItemResponse {
-        val product = createProductEntity(sellerId, req)
-        savedImageUrls(images).forEachIndexed { index, imageUrl ->
-            product.images += ProductImage(product = product, imageUrl = imageUrl, displayOrder = index)
-        }
-        product.thumbnailUrl = product.images.minByOrNull { it.displayOrder }?.imageUrl ?: product.thumbnailUrl
-        return SellerSaleItemResponse.from(product)
+        return createProduct(sellerId, req, images)
     }
 
     @Transactional
     fun updateProductStatus(sellerId: Long, productId: Long, req: UpdateSaleStatusRequest): SellerSaleItemResponse {
-        val store = sellerStore(sellerId)
+        val store = storeOwnershipService.findSellerStore(sellerId)
         val product = findSellerProduct(store, productId)
-        val nextStatus = req.status.toProductStatus()
-        require(product.status != ProductStatus.DELETED) { "삭제된 상품은 상태를 변경할 수 없습니다." }
-        require(nextStatus != ProductStatus.DELETED) { "상품 삭제는 삭제 API를 사용해 주세요." }
-        if (nextStatus == ProductStatus.AVAILABLE && product.quantityRemaining <= 0) {
-            throw IllegalStateException("잔여 수량이 없는 상품은 먼저 수량을 수정해 주세요.")
-        }
-        product.status = nextStatus
-        if (nextStatus == ProductStatus.SOLD_OUT) product.quantityRemaining = 0
+        product.changeSaleStatus(req.status.toProductStatus())
         return SellerSaleItemResponse.from(product)
     }
 
     @Transactional
     fun updateProduct(sellerId: Long, productId: Long, req: UpdateSaleItemRequest): SellerSaleItemResponse {
-        val store = sellerStore(sellerId)
+        val store = storeOwnershipService.findSellerStore(sellerId)
         val product = findSellerProduct(store, productId)
         require(product.status != ProductStatus.DELETED) { "삭제된 상품은 수정할 수 없습니다." }
 
         val nextOriginalPrice = req.originalPrice ?: product.originalPrice
         val nextDiscountPrice = req.discountPrice ?: product.discountPrice
-        req.originalPrice?.let { require(it > 0) { "정상가는 1원 이상이어야 합니다." } }
-        req.discountPrice?.let { require(it > 0) { "할인가는 1원 이상이어야 합니다." } }
-        // B8: null 병합 후에도 두 값 모두 양수이고 할인가 < 정상가 조건을 명시적으로 검증
-        require(nextDiscountPrice > 0 && nextOriginalPrice > 0 && nextDiscountPrice < nextOriginalPrice) {
-            "할인가는 정가보다 낮아야 합니다."
-        }
+        validatePrice(nextOriginalPrice, nextDiscountPrice)
         product.originalPrice = nextOriginalPrice
         product.discountPrice = nextDiscountPrice
 
@@ -193,7 +181,7 @@ class SellerAppService(
 
     @Transactional
     fun deleteProduct(sellerId: Long, productId: Long) {
-        val store = sellerStore(sellerId)
+        val store = storeOwnershipService.findSellerStore(sellerId)
         val product = findSellerProduct(store, productId)
         val activeStatuses = setOf(OrderStatus.PENDING, OrderStatus.CONFIRMED)
         val hasActiveOrders = orderRepository.existsActiveOrderForProduct(store, activeStatuses.toList(), product)
@@ -204,7 +192,7 @@ class SellerAppService(
     // ── 메뉴 마스터 관리 ──────────────────────────────────────────────────────
 
     fun getMenus(sellerId: Long): List<SellerMenuItemResponse> {
-        val store = sellerStoreOrNull(sellerId) ?: return emptyList()
+        val store = storeOwnershipService.findSellerStoreOrNull(sellerId) ?: return emptyList()
         return menuItemRepository.findByStoreAndIsActiveTrue(store).map { SellerMenuItemResponse.from(it) }
     }
 
@@ -214,7 +202,7 @@ class SellerAppService(
         require(req.originalPrice > 0) { "정상가는 1원 이상이어야 합니다." }
         val menuItem = menuItemRepository.save(
             MenuItem(
-                store = sellerStore(sellerId),
+                store = storeOwnershipService.findSellerStore(sellerId),
                 name = req.name,
                 description = req.description,
                 originalPrice = req.originalPrice,
@@ -231,13 +219,12 @@ class SellerAppService(
         req: SellerMenuItemRequest,
         image: MultipartFile?,
     ): SellerMenuItemResponse {
-        val imageUrl = menuImageStorageService.save(image)
-        return createMenu(sellerId, req, imageUrl)
+        return createMenu(sellerId, req, menuImageStorageService.save(image))
     }
 
     @Transactional
     fun updateMenu(sellerId: Long, menuItemId: Long, req: SellerMenuItemUpdateRequest): SellerMenuItemResponse {
-        val store = sellerStore(sellerId)
+        val store = storeOwnershipService.findSellerStore(sellerId)
         val menuItem = findSellerMenu(store, menuItemId)
         req.name?.takeIf { it.isNotBlank() }?.let { menuItem.name = it }
         req.originalPrice?.let {
@@ -249,7 +236,7 @@ class SellerAppService(
 
     @Transactional
     fun deleteMenu(sellerId: Long, menuItemId: Long) {
-        val store = sellerStore(sellerId)
+        val store = storeOwnershipService.findSellerStore(sellerId)
         val menuItem = findSellerMenu(store, menuItemId)
         menuItem.isActive = false
     }
@@ -281,7 +268,7 @@ class SellerAppService(
     @Transactional
     fun sendNotification(sellerId: Long, req: SendNotificationRequest): SellerNotificationResponse {
         require(req.message.isNotBlank()) { "알림 내용을 입력해 주세요." }
-        val store = sellerStore(sellerId)
+        val store = storeOwnershipService.findSellerStore(sellerId)
         val recipients = notificationRecipients(store, req)
         val saved = recipients.map { member -> saveEventNotification(member, store, req.message) }
         val sent = saved.firstOrNull()
@@ -296,7 +283,7 @@ class SellerAppService(
     }
 
     fun getSellerNotifications(sellerId: Long): List<SellerNotificationResponse> {
-        val store = sellerStore(sellerId)
+        val store = storeOwnershipService.findSellerStore(sellerId)
         return notificationRepository.findByRelatedStoreIdAndTitleOrderByCreatedAtDesc(store.storeId, store.name)
             .groupBy { it.body to it.createdAt.toString().take(16) }
             .map { (_, notifications) -> notifications.maxBy { it.createdAt } to notifications.size }
@@ -315,18 +302,18 @@ class SellerAppService(
 
     private fun notificationRecipients(store: Store, req: SendNotificationRequest): List<com.deuktemsiru.entity.Member> {
         req.radiusKm?.let { require(it > 0) { "알림 반경은 1km 이상이어야 합니다." } }
-        val wishlistedMembers = wishlistRepository.findByStore(store)
-            .map { it.member }
-        val orderMembers = orderRepository.findByStoreOrderByCreatedAtDesc(store)
-            .map { it.consumer }
         val base = when (req.targetType.uppercase()) {
-            "REGULAR" -> (wishlistedMembers + orderMembers)
+            "REGULAR" -> sequenceOf(
+                wishlistRepository.findByStore(store).asSequence().map { it.member },
+                orderRepository.findByStoreOrderByCreatedAtDesc(store).asSequence().map { it.consumer },
+            ).flatten()
             "NEARBY" -> throw IllegalStateException("주변 알림은 회원 위치 정보가 없어 아직 사용할 수 없습니다.")
             else -> throw IllegalArgumentException("지원하지 않는 알림 대상: ${req.targetType}")
         }
         return base
             .filter { it.status }
             .distinctBy { it.memberId }
+            .toList()
     }
 
     private fun findSellerProduct(store: Store, productId: Long): Product =
@@ -349,6 +336,19 @@ class SellerAppService(
 
     private fun savedImageUrls(images: List<MultipartFile>): List<String> =
         images.mapNotNull { menuImageStorageService.save(it) }
+
+    private fun Product.addImages(images: List<MultipartFile>) {
+        savedImageUrls(images).forEachIndexed { index, imageUrl ->
+            this.images += ProductImage(product = this, imageUrl = imageUrl, displayOrder = index)
+        }
+        thumbnailUrl = this.images.minByOrNull { it.displayOrder }?.imageUrl ?: thumbnailUrl
+    }
+
+    private fun validatePrice(originalPrice: Int, discountPrice: Int) {
+        require(originalPrice > 0) { "정상가는 1원 이상이어야 합니다." }
+        require(discountPrice > 0) { "할인가는 1원 이상이어야 합니다." }
+        require(discountPrice < originalPrice) { "할인가는 정가보다 낮아야 합니다." }
+    }
 
     private fun saveEventNotification(
         member: com.deuktemsiru.entity.Member,
@@ -378,10 +378,6 @@ class SellerAppService(
     private fun parsePickupTime(value: String, fieldName: String) = value.toLocalTimeOrThrow(fieldName)
 
     private fun parseAvailableDate(value: String): LocalDate = value.toLocalDateOrThrow("판매일")
-
-    private fun sellerStore(sellerId: Long) = storeOwnershipService.findSellerStore(sellerId)
-
-    private fun sellerStoreOrNull(sellerId: Long) = storeOwnershipService.findSellerStoreOrNull(sellerId)
 
     private fun today(): LocalDate = clock.today()
 

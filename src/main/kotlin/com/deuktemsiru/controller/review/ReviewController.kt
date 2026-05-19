@@ -1,6 +1,8 @@
 package com.deuktemsiru.controller.review
 
 import com.deuktemsiru.common.ApiResponse
+import com.deuktemsiru.common.created
+import com.deuktemsiru.common.ok
 import com.deuktemsiru.security.CurrentMemberId
 import com.deuktemsiru.service.ReviewCreateRequest
 import com.deuktemsiru.service.ReviewService
@@ -22,7 +24,7 @@ class ReviewController(
         @RequestBody req: ReviewCreateRequest,
     ): ResponseEntity<ApiResponse<Unit>> {
         reviewService.createReview(memberId, req)
-        return ApiResponse.createdEntity(Unit, "리뷰가 작성되었습니다.")
+        return created(Unit, "리뷰가 작성되었습니다.")
     }
 
     /**
@@ -35,6 +37,6 @@ class ReviewController(
         @PathVariable reviewId: Long,
     ): ApiResponse<Unit> {
         reviewService.deleteReview(reviewId, memberId)
-        return ApiResponse.success(Unit, "리뷰가 삭제되었습니다.")
+        return ok(Unit, "리뷰가 삭제되었습니다.")
     }
 }

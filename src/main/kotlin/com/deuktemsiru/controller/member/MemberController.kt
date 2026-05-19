@@ -1,6 +1,7 @@
 package com.deuktemsiru.controller.member
 
 import com.deuktemsiru.common.ApiResponse
+import com.deuktemsiru.common.ok
 import com.deuktemsiru.dto.MemberResponse
 import com.deuktemsiru.dto.MemberStatsResponse
 import com.deuktemsiru.dto.NotificationSettingsResponse
@@ -26,7 +27,7 @@ class MemberController(
     @GetMapping("/me")
     fun getMyProfile(@CurrentMemberId memberId: Long): ApiResponse<MemberResponse> {
         val member = memberService.findMember(memberId)
-        return ApiResponse.success(MemberResponse.from(member), "마이페이지 조회 성공")
+        return ok(MemberResponse.from(member), "마이페이지 조회 성공")
     }
 
     /**
@@ -39,7 +40,7 @@ class MemberController(
         @RequestBody req: MemberUpdateRequest,
     ): ApiResponse<MemberResponse> {
         val member = memberService.updateProfile(memberId, req.nickname, req.phone)
-        return ApiResponse.success(MemberResponse.from(member), "수정 성공")
+        return ok(MemberResponse.from(member), "수정 성공")
     }
 
     /**
@@ -49,7 +50,7 @@ class MemberController(
     @DeleteMapping("/me")
     fun deleteMyAccount(@CurrentMemberId memberId: Long): ApiResponse<Unit> {
         memberService.deleteAccount(memberId)
-        return ApiResponse.success(Unit, "탈퇴 처리 완료")
+        return ok(Unit, "탈퇴 처리 완료")
     }
 
     /**
@@ -58,7 +59,7 @@ class MemberController(
      */
     @GetMapping("/me/stats")
     fun getMyStats(@CurrentMemberId memberId: Long): ApiResponse<MemberStatsResponse> {
-        return ApiResponse.success(memberService.getStats(memberId), "통계 조회 성공")
+        return ok(memberService.getStats(memberId), "통계 조회 성공")
     }
 
     /**
@@ -67,7 +68,7 @@ class MemberController(
      */
     @GetMapping("/me/notification-settings")
     fun getNotificationSettings(@CurrentMemberId memberId: Long): ApiResponse<NotificationSettingsResponse> {
-        return ApiResponse.success(memberService.getNotificationSettings(memberId), "알림 설정 조회 성공")
+        return ok(memberService.getNotificationSettings(memberId), "알림 설정 조회 성공")
     }
 
     /**
@@ -79,6 +80,6 @@ class MemberController(
         @CurrentMemberId memberId: Long,
         @RequestBody req: UpdateNotificationSettingsRequest,
     ): ApiResponse<NotificationSettingsResponse> {
-        return ApiResponse.success(memberService.updateNotificationSettings(memberId, req), "설정 변경 성공")
+        return ok(memberService.updateNotificationSettings(memberId, req), "설정 변경 성공")
     }
 }

@@ -12,7 +12,6 @@ import com.deuktemsiru.repository.ProductRepository
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.Clock
-import java.time.LocalDate
 
 @Service
 @Transactional(readOnly = true)
@@ -106,5 +105,4 @@ class CartService(
         )
     }
 
-    private fun today(): LocalDate = clock.today()
 }

@@ -1,6 +1,7 @@
 package com.deuktemsiru.controller.seller
 
 import com.deuktemsiru.common.ApiResponse
+import com.deuktemsiru.common.ok
 import com.deuktemsiru.dto.SettlementItem
 import com.deuktemsiru.dto.SettlementListResponse
 import com.deuktemsiru.dto.SettlementWithdrawRequest
@@ -35,8 +36,7 @@ class SellerSettlementController(
         val targetYear = year ?: now.year
         val targetMonth = month ?: now.monthValue
         require(targetMonth in 1..12) { "month는 1~12 사이 값이어야 합니다." }
-        val response = settlementService.getSettlements(sellerId, targetYear, targetMonth)
-        return ApiResponse.success(response)
+        return ok(settlementService.getSettlements(sellerId, targetYear, targetMonth))
     }
 
     @PostMapping("/withdrawals")
@@ -45,7 +45,7 @@ class SellerSettlementController(
         @RequestBody req: SettlementWithdrawRequest,
     ): ApiResponse<SettlementItem> {
         require(req.month in 1..12) { "month는 1~12 사이 값이어야 합니다." }
-        return ApiResponse.success(
+        return ok(
             settlementService.requestWithdrawal(sellerId, req.year, req.month),
             "출금 신청이 접수되었습니다.",
         )

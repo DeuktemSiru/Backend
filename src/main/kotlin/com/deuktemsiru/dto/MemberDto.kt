@@ -22,27 +22,15 @@ data class NotificationSettingsResponse(
     val event: Boolean,
 ) {
     companion object {
-        fun from(member: Member) = if (member.role == MemberRole.CONSUMER) {
-            NotificationSettingsResponse(
-                newProduct = member.notifNewProduct,
-                pickupReminder = member.notifPickupReminder,
-                orderConfirmed = member.notifOrderConfirmed,
-                newOrder = null,
-                pickupComplete = null,
-                soldOut = null,
-                event = member.notifEvent,
-            )
-        } else {
-            NotificationSettingsResponse(
-                newProduct = null,
-                pickupReminder = null,
-                orderConfirmed = null,
-                newOrder = member.notifNewOrder,
-                pickupComplete = member.notifPickupComplete,
-                soldOut = member.notifSoldOut,
-                event = member.notifEvent,
-            )
-        }
+        fun from(member: Member) = NotificationSettingsResponse(
+            newProduct = member.notifNewProduct.takeIf { member.role == MemberRole.CONSUMER },
+            pickupReminder = member.notifPickupReminder.takeIf { member.role == MemberRole.CONSUMER },
+            orderConfirmed = member.notifOrderConfirmed.takeIf { member.role == MemberRole.CONSUMER },
+            newOrder = member.notifNewOrder.takeIf { member.role == MemberRole.SELLER },
+            pickupComplete = member.notifPickupComplete.takeIf { member.role == MemberRole.SELLER },
+            soldOut = member.notifSoldOut.takeIf { member.role == MemberRole.SELLER },
+            event = member.notifEvent,
+        )
     }
 }
 

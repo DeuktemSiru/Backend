@@ -1,6 +1,7 @@
 package com.deuktemsiru.controller.store
 
 import com.deuktemsiru.common.ApiResponse
+import com.deuktemsiru.common.ok
 import com.deuktemsiru.dto.StoreDetailResponse
 import com.deuktemsiru.dto.StoreListItemResponse
 import com.deuktemsiru.security.JwtUser
@@ -41,7 +42,7 @@ class StoreController(
             page = page,
             size = size,
         )
-        return ApiResponse.success(StoreListResponse(stores = stores.items, hasNext = stores.hasNext))
+        return ok(StoreListResponse(stores = stores.items, hasNext = stores.hasNext))
     }
 
     /**
@@ -52,7 +53,7 @@ class StoreController(
     fun getStore(
         @PathVariable storeId: Long,
     ): ApiResponse<StoreDetailResponse> {
-        return ApiResponse.success(storeService.getStoreDetailBuyer(storeId, currentMemberId()))
+        return ok(storeService.getStoreDetailBuyer(storeId, currentMemberId()))
     }
 
     private fun currentMemberId(): Long? =

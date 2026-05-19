@@ -1,6 +1,7 @@
 package com.deuktemsiru.controller.store
 
 import com.deuktemsiru.common.ApiResponse
+import com.deuktemsiru.common.ok
 import com.deuktemsiru.service.ReviewService
 import com.deuktemsiru.service.StoreReviewListResponse
 import org.springframework.web.bind.annotation.*
@@ -20,6 +21,6 @@ class StoreReviewController(
         @RequestParam(defaultValue = "0") page: Int,
         @RequestParam(defaultValue = "20") size: Int,
     ): ApiResponse<StoreReviewListResponse> {
-        return ApiResponse.success(reviewService.getStoreReviews(storeId, page, size))
+        return ok(reviewService.getStoreReviews(storeId, page, size))
     }
 }

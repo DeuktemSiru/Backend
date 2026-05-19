@@ -1,6 +1,7 @@
 package com.deuktemsiru.controller.notification
 
 import com.deuktemsiru.common.ApiResponse
+import com.deuktemsiru.common.ok
 import com.deuktemsiru.dto.NotificationResponse
 import com.deuktemsiru.security.CurrentMemberId
 import com.deuktemsiru.service.NotificationService
@@ -27,7 +28,7 @@ class NotificationController(
         @RequestParam(defaultValue = "20") size: Int,
     ): ApiResponse<NotificationListResponse> {
         val result = notificationService.getNotifications(memberId)
-        return ApiResponse.success(
+        return ok(
             NotificationListResponse(
                 notifications = result.notifications,
                 unreadCount = result.unreadCount,
@@ -45,7 +46,7 @@ class NotificationController(
         @PathVariable notificationId: Long,
     ): ApiResponse<Unit> {
         notificationService.markAsRead(memberId, notificationId)
-        return ApiResponse.success(Unit, "읽음 처리 완료")
+        return ok(Unit, "읽음 처리 완료")
     }
 
     /**
@@ -58,6 +59,6 @@ class NotificationController(
         @PathVariable notificationId: Long,
     ): ApiResponse<Unit> {
         notificationService.deleteNotification(memberId, notificationId)
-        return ApiResponse.success(Unit, "알림 삭제 완료")
+        return ok(Unit, "알림 삭제 완료")
     }
 }

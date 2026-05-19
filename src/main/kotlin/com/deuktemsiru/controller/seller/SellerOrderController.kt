@@ -1,6 +1,7 @@
 package com.deuktemsiru.controller.seller
 
 import com.deuktemsiru.common.ApiResponse
+import com.deuktemsiru.common.ok
 import com.deuktemsiru.dto.OrderDetailResponse
 import com.deuktemsiru.dto.PickupConfirmRequest
 import com.deuktemsiru.dto.UpdateOrderStatusRequest
@@ -28,8 +29,7 @@ class SellerOrderController(
         @RequestParam(defaultValue = "0") page: Int,
         @RequestParam(defaultValue = "20") size: Int,
     ): ApiResponse<List<OrderDetailResponse>> {
-        val orders = orderService.getStoreOrders(sellerId, status, date, page, size)
-        return ApiResponse.success(orders)
+        return ok(orderService.getStoreOrders(sellerId, status, date, page, size))
     }
 
     /**
@@ -41,8 +41,7 @@ class SellerOrderController(
         @CurrentMemberId sellerId: Long,
         @PathVariable orderId: Long,
     ): ApiResponse<OrderDetailResponse> {
-        val order = orderService.getStoreOrder(sellerId, orderId)
-        return ApiResponse.success(order)
+        return ok(orderService.getStoreOrder(sellerId, orderId))
     }
 
     /**
@@ -55,8 +54,7 @@ class SellerOrderController(
         @PathVariable orderId: Long,
         @RequestBody req: PickupConfirmRequest,
     ): ApiResponse<OrderDetailResponse> {
-        val order = orderService.confirmPickupCode(sellerId, orderId, req.pickupCode)
-        return ApiResponse.success(order)
+        return ok(orderService.confirmPickupCode(sellerId, orderId, req.pickupCode))
     }
 
     /**
@@ -69,8 +67,7 @@ class SellerOrderController(
         @PathVariable orderId: Long,
         @RequestBody req: UpdateOrderStatusRequest,
     ): ApiResponse<OrderDetailResponse> {
-        val order = orderService.updateOrderStatus(sellerId, orderId, req)
-        return ApiResponse.success(order)
+        return ok(orderService.updateOrderStatus(sellerId, orderId, req))
     }
 
 }
@@ -85,6 +82,6 @@ class SellerPickupController(
         @CurrentMemberId sellerId: Long,
         @RequestParam code: String,
     ): ApiResponse<OrderDetailResponse> {
-        return ApiResponse.success(orderService.verifyPickupCode(sellerId, code))
+        return ok(orderService.verifyPickupCode(sellerId, code))
     }
 }

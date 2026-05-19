@@ -2,6 +2,7 @@ package com.deuktemsiru.dto
 
 import com.deuktemsiru.entity.Product
 import com.deuktemsiru.entity.Store
+import com.deuktemsiru.entity.discountRate
 
 // ── 가게 목록 아이템 (GET /stores) ───────────────────────────────────────────
 data class StoreListItemResponse(
@@ -27,8 +28,6 @@ data class StoreListItemResponse(
             representativeProduct: Product? = null,
             isWishlisted: Boolean = false,
         ): StoreListItemResponse {
-            val originalPrice = representativeProduct?.originalPrice ?: 0
-            val discountPrice = representativeProduct?.discountPrice ?: 0
             return StoreListItemResponse(
                 storeId = store.storeId,
                 name = store.name,
@@ -38,13 +37,9 @@ data class StoreListItemResponse(
                 ratingAvg = store.ratingAvg,
                 reviewCount = store.reviewCount,
                 availableProductCount = availableProductCount,
-                representativeOriginalPrice = originalPrice,
-                representativeDiscountPrice = discountPrice,
-                representativeDiscountRate = if (originalPrice > 0) {
-                    ((originalPrice - discountPrice) * 100 / originalPrice).coerceAtLeast(0)
-                } else {
-                    0
-                },
+                representativeOriginalPrice = representativeProduct?.originalPrice ?: 0,
+                representativeDiscountPrice = representativeProduct?.discountPrice ?: 0,
+                representativeDiscountRate = representativeProduct?.discountRate ?: 0,
                 representativePickupEnd = representativeProduct?.pickupEnd?.toString(),
                 isWishlisted = isWishlisted,
             )

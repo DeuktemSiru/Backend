@@ -1,6 +1,7 @@
 package com.deuktemsiru.controller.wishlist
 
 import com.deuktemsiru.common.ApiResponse
+import com.deuktemsiru.common.ok
 import com.deuktemsiru.dto.WishlistItemResponse
 import com.deuktemsiru.security.CurrentMemberId
 import com.deuktemsiru.service.StoreService
@@ -26,10 +27,7 @@ class WishlistController(
         @PathVariable storeId: Long,
     ): ResponseEntity<ApiResponse<WishlistToggleResponse>> {
         val isWishlisted = storeService.toggleWishlist(memberId, storeId)
-        val status = if (isWishlisted) HttpStatus.CREATED else HttpStatus.OK
-        val message = if (isWishlisted) "찜 등록 성공" else "찜 해제 성공"
-        return ResponseEntity.status(status)
-            .body(ApiResponse.success(WishlistToggleResponse(storeId = storeId, isWishlisted = isWishlisted), message))
+        return wishlistToggleResponse(storeId, isWishlisted)
     }
 
     /**
@@ -42,7 +40,7 @@ class WishlistController(
         @PathVariable storeId: Long,
     ): ApiResponse<Unit> {
         storeService.removeWishlist(memberId, storeId)
-        return ApiResponse.success(Unit, "찜 해제 성공")
+        return ok(Unit, "찜 해제 성공")
     }
 
     /**
@@ -56,6 +54,19 @@ class WishlistController(
         @RequestParam(defaultValue = "20") size: Int,
     ): ApiResponse<WishlistListResponse> {
         val wishlists = storeService.getWishlistBuyer(memberId)
-        return ApiResponse.success(WishlistListResponse(wishlists))
+        return ok(WishlistListResponse(wishlists))
     }
+
+    private fun wishlistToggleResponse(
+        storeId: Long,
+        isWishlisted: Boolean,
+    ): ResponseEntity<ApiResponse<WishlistToggleResponse>> =
+        ResponseEntity
+            .status(if (isWishlisted) HttpStatus.CREATED else HttpStatus.OK)
+            .body(
+                ok(
+                    WishlistToggleResponse(storeId = storeId, isWishlisted = isWishlisted),
+                    if (isWishlisted) "찜 등록 성공" else "찜 해제 성공",
+                )
+            )
 }

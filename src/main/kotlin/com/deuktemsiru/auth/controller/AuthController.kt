@@ -7,6 +7,8 @@ import com.deuktemsiru.auth.dto.TokenRefreshRequest
 import com.deuktemsiru.auth.dto.TokenResponse
 import com.deuktemsiru.auth.service.AuthService
 import com.deuktemsiru.common.ApiResponse
+import com.deuktemsiru.common.created
+import com.deuktemsiru.common.ok
 import com.deuktemsiru.dto.MemberResponse
 import com.deuktemsiru.security.CurrentMemberId
 import com.deuktemsiru.service.MemberService
@@ -57,9 +59,9 @@ class AuthController(
     ): ResponseEntity<ApiResponse<LoginResponse>> {
         val (response, isNew) = authService.kakaoLogin(req)
         return if (isNew) {
-            ApiResponse.createdEntity(response, "회원가입 후 로그인 성공")
+            created(response, "회원가입 후 로그인 성공")
         } else {
-            ResponseEntity.ok(ApiResponse.success(response, "로그인 성공"))
+            ResponseEntity.ok(ok(response, "로그인 성공"))
         }
     }
 
@@ -86,7 +88,7 @@ class AuthController(
                 "디버그 로그인은 비활성화되어 있습니다.",
             )
         }
-        return ApiResponse.success(authService.debugLogin(req.role, req.email), "디버그 로그인 성공")
+        return ok(authService.debugLogin(req.role, req.email), "디버그 로그인 성공")
     }
 
     /**
@@ -105,8 +107,7 @@ class AuthController(
     fun refresh(
         @RequestBody req: TokenRefreshRequest,
     ): ApiResponse<TokenResponse> {
-        val response = authService.refresh(req)
-        return ApiResponse.success(response, "토큰 갱신 성공")
+        return ok(authService.refresh(req), "토큰 갱신 성공")
     }
 
     /**
@@ -125,7 +126,7 @@ class AuthController(
     @PostMapping("/logout")
     fun logout(@CurrentMemberId memberId: Long): ApiResponse<Unit> {
         authService.logout(memberId)
-        return ApiResponse.success(Unit, "로그아웃 성공")
+        return ok(Unit, "로그아웃 성공")
     }
 
     /**
@@ -145,7 +146,7 @@ class AuthController(
         @RequestBody req: SiruLinkRequest,
     ): ApiResponse<MemberResponse> {
         val member = memberService.linkSiru(memberId, req.siruAccessToken)
-        return ApiResponse.success(MemberResponse.from(member), "시루 계정이 연동되었습니다.")
+        return ok(MemberResponse.from(member), "시루 계정이 연동되었습니다.")
     }
 
     /**
@@ -162,6 +163,6 @@ class AuthController(
     @DeleteMapping("/siru/link")
     fun unlinkSiru(@CurrentMemberId memberId: Long): ApiResponse<MemberResponse> {
         val member = memberService.unlinkSiru(memberId)
-        return ApiResponse.success(MemberResponse.from(member), "시루 계정 연동이 해제되었습니다.")
+        return ok(MemberResponse.from(member), "시루 계정 연동이 해제되었습니다.")
     }
 }

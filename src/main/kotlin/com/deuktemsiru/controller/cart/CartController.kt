@@ -1,6 +1,8 @@
 package com.deuktemsiru.controller.cart
 
 import com.deuktemsiru.common.ApiResponse
+import com.deuktemsiru.common.created
+import com.deuktemsiru.common.ok
 import com.deuktemsiru.dto.CartAddRequest
 import com.deuktemsiru.dto.CartItem
 import com.deuktemsiru.dto.CartResponse
@@ -27,8 +29,7 @@ class CartController(
         @CurrentMemberId memberId: Long,
         @RequestBody req: CartAddRequest,
     ): ResponseEntity<ApiResponse<CartItem>> {
-        val item = cartService.addToCart(memberId, req.productId, req.quantity)
-        return ApiResponse.createdEntity(item, "장바구니에 담았습니다.")
+        return created(cartService.addToCart(memberId, req.productId, req.quantity), "장바구니에 담았습니다.")
     }
 
     /**
@@ -39,7 +40,7 @@ class CartController(
     fun getCart(
         @CurrentMemberId memberId: Long,
     ): ApiResponse<CartResponse> {
-        return ApiResponse.success(cartService.getCart(memberId))
+        return ok(cartService.getCart(memberId))
     }
 
     /**
@@ -52,7 +53,7 @@ class CartController(
         @PathVariable cartItemId: Long,
     ): ApiResponse<Unit> {
         cartService.removeFromCart(memberId, cartItemId)
-        return ApiResponse.success(Unit, "장바구니 상품을 삭제했습니다.")
+        return ok(Unit, "장바구니 상품을 삭제했습니다.")
     }
 
     @PatchMapping("/{cartItemId}")
@@ -61,8 +62,7 @@ class CartController(
         @PathVariable cartItemId: Long,
         @RequestBody req: CartUpdateRequest,
     ): ApiResponse<CartItem> {
-        val item = cartService.updateQuantity(memberId, cartItemId, req.quantity)
-        return ApiResponse.success(item, "장바구니 수량을 변경했습니다.")
+        return ok(cartService.updateQuantity(memberId, cartItemId, req.quantity), "장바구니 수량을 변경했습니다.")
     }
 
     /**
@@ -74,6 +74,6 @@ class CartController(
         @CurrentMemberId memberId: Long,
     ): ApiResponse<Unit> {
         cartService.clearCart(memberId)
-        return ApiResponse.success(Unit, "장바구니를 비웠습니다.")
+        return ok(Unit, "장바구니를 비웠습니다.")
     }
 }
