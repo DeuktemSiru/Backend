@@ -2,7 +2,9 @@
   "name": "deuktemsiru-backend-api-tests",
   "private": true,
   "scripts": {
-    "postman:test": "newman run docs/postman/deuktemsiru-core.postman_collection.json -e docs/postman/deuktemsiru-local.postman_environment.json --reporters cli,junit --reporter-junit-export build/reports/newman/junit.xml"
+    "postman:test": "newman run docs/postman/deuktemsiru-core.postman_collection.json -e docs/postman/deuktemsiru-local.postman_environment.json --reporters cli,junit --reporter-junit-export build/reports/newman/junit.xml",
+    "k6:smoke": "k6 run tests/k6/smoke.js",
+    "k6:load": "k6 run tests/k6/load.js"
   },
   "devDependencies": {
     "newman": "6.2.2"

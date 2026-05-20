@@ -195,6 +195,18 @@ export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"
 
 `check`는 테스트, Jacoco 리포트, 미완성 Stub 검사를 함께 실행합니다.
 
+### k6 시스템/부하 테스트
+
+로컬 API 서버를 `dev` 프로파일로 실행한 뒤 k6 smoke/load 테스트를 실행할 수 있습니다.
+
+```bash
+./gradlew bootRun --args='--spring.profiles.active=dev'
+npm run k6:smoke
+npm run k6:load
+```
+
+상세 실행 옵션과 Docker 실행 방법은 `docs/k6/README.md`를 참고하세요.
+
 ## Docker Compose 실행
 
 백엔드, PostgreSQL, Prometheus, Grafana를 한 번에 실행합니다.
