@@ -16,6 +16,9 @@ out/
 # Spring Boot
 HELP.md
 
+# Node / Newman
+node_modules/
+
 # Secrets & environment
 application-local.properties
 application-local.yml

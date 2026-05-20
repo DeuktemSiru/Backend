@@ -17,6 +17,17 @@
 3. Environment를 `Deuktemsiru Local`로 선택합니다.
 4. `Auth / Debug Login - Buyer`와 `Auth / Debug Login - Seller`를 먼저 실행합니다.
 
+## CLI / CI
+
+Newman으로 저장된 컬렉션을 실행합니다.
+
+```bash
+npm ci
+npm run postman:test
+```
+
+GitHub Actions CI는 PostgreSQL 서비스를 띄우고, 백엔드를 `dev` 프로파일로 실행한 뒤 위 Newman 테스트를 자동 실행합니다.
+
 ## Full API Import
 
 전체 엔드포인트 컬렉션이 필요하면 백엔드 실행 후 아래 URL을 Postman에서 import합니다.

@@ -18,6 +18,20 @@ jobs:
   backend-quality:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: deuktemsiru
+          POSTGRES_USER: deuktemsiru
+          POSTGRES_PASSWORD: deuktemsiru
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U deuktemsiru -d deuktemsiru"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
 
     steps:
       - name: Checkout
@@ -32,11 +46,50 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
       - name: Validate Gradle wrapper
         uses: gradle/actions/wrapper-validation@v4
 
       - name: Run quality checks
         run: ./gradlew clean check bootJar --stacktrace
+
+      - name: Install Newman
+        run: npm ci
+
+      - name: Start backend for API tests
+        env:
+          SPRING_PROFILES_ACTIVE: dev
+          SPRING_DATASOURCE_URL: jdbc:postgresql://localhost:5432/deuktemsiru
+          SPRING_DATASOURCE_USERNAME: deuktemsiru
+          SPRING_DATASOURCE_PASSWORD: deuktemsiru
+          APP_JWT_SECRET: deuktemsiru-ci-secret-key-for-newman-tests
+        run: |
+          mkdir -p build/reports/newman
+          nohup ./gradlew bootRun --no-daemon > build/bootRun.log 2>&1 &
+          echo $! > build/bootRun.pid
+          for attempt in {1..60}; do
+            if curl --fail --silent http://localhost:8080/actuator/health > /dev/null; then
+              exit 0
+            fi
+            sleep 2
+          done
+          cat build/bootRun.log
+          exit 1
+
+      - name: Run Postman API tests with Newman
+        run: npm run postman:test
+
+      - name: Stop backend
+        if: always()
+        run: |
+          if [ -f build/bootRun.pid ]; then
+            kill "$(cat build/bootRun.pid)" || true
+          fi
 
       - name: Upload test report
         if: always()
@@ -51,3 +104,17 @@ jobs:
         with:
           name: coverage-report
           path: build/reports/jacoco/test/html
+
+      - name: Upload Newman report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: newman-report
+          path: build/reports/newman
+
+      - name: Upload backend API test log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-api-test-log
+          path: build/bootRun.log

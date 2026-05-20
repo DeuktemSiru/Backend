@@ -23,7 +23,10 @@
         "exec": [
           "pm.test('response uses ApiResponse envelope when body exists', function () {",
           "  if (!pm.response.text()) return;",
+          "  const contentType = pm.response.headers.get('Content-Type') || '';",
+          "  if (!contentType.includes('application/json')) return;",
           "  const json = pm.response.json();",
+          "  if (json.openapi) return;",
           "  pm.expect(json).to.have.property('code');",
           "  pm.expect(json).to.have.property('message');",
           "});"

@@ -1,0 +1,10 @@
+{
+  "name": "deuktemsiru-backend-api-tests",
+  "private": true,
+  "scripts": {
+    "postman:test": "newman run docs/postman/deuktemsiru-core.postman_collection.json -e docs/postman/deuktemsiru-local.postman_environment.json --reporters cli,junit --reporter-junit-export build/reports/newman/junit.xml"
+  },
+  "devDependencies": {
+    "newman": "6.2.2"
+  }
+}
