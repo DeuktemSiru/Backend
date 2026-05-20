@@ -175,6 +175,17 @@ export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"
 ./gradlew bootRun --args='--spring.profiles.active=dev'
 ```
 
+### API 문서와 Postman
+
+| 도구 | 위치 |
+| --- | --- |
+| Swagger UI | `http://localhost:8080/swagger-ui/index.html` |
+| OpenAPI JSON | `http://localhost:8080/v3/api-docs` |
+| Postman Collection | `docs/postman/deuktemsiru-core.postman_collection.json` |
+| Postman Environment | `docs/postman/deuktemsiru-local.postman_environment.json` |
+
+전체 API 컬렉션은 Postman에서 `http://localhost:8080/v3/api-docs`를 import해 생성할 수 있습니다. 저장된 Postman 컬렉션은 로컬 개발에서 자주 쓰는 구매자/판매자 핵심 플로우만 담습니다.
+
 ### 테스트 및 검증
 
 ```bash

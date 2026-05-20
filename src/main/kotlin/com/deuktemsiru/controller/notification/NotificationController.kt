@@ -5,6 +5,7 @@ import com.deuktemsiru.common.ok
 import com.deuktemsiru.dto.NotificationResponse
 import com.deuktemsiru.security.CurrentMemberId
 import com.deuktemsiru.service.NotificationService
+import io.swagger.v3.oas.annotations.tags.Tag
 import org.springframework.web.bind.annotation.*
 
 data class NotificationListResponse(
@@ -12,6 +13,7 @@ data class NotificationListResponse(
     val unreadCount: Int,
 )
 
+@Tag(name = "Notifications", description = "구매자 알림 API")
 @RestController
 @RequestMapping("/api/v1/notifications")
 class NotificationController(

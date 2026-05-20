@@ -6,9 +6,11 @@ import com.deuktemsiru.common.ok
 import com.deuktemsiru.security.CurrentMemberId
 import com.deuktemsiru.service.ReviewCreateRequest
 import com.deuktemsiru.service.ReviewService
+import io.swagger.v3.oas.annotations.tags.Tag
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.*
 
+@Tag(name = "Reviews", description = "구매자 리뷰 API")
 @RestController
 @RequestMapping("/api/v1/reviews")
 class ReviewController(

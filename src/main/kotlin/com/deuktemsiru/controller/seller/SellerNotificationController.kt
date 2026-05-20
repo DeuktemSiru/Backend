@@ -7,11 +7,13 @@ import com.deuktemsiru.dto.SendNotificationRequest
 import com.deuktemsiru.dto.SellerNotificationResponse
 import com.deuktemsiru.security.CurrentMemberId
 import com.deuktemsiru.service.SellerAppService
+import io.swagger.v3.oas.annotations.tags.Tag
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.*
 
 // ── Controller ────────────────────────────────────────────────────────────────
 
+@Tag(name = "Seller Notifications", description = "판매자 고객 알림 발송 API")
 @RestController
 @RequestMapping("/api/v1/sellers/notifications")
 class SellerNotificationController(

@@ -8,6 +8,7 @@ import com.deuktemsiru.dto.NotificationSettingsResponse
 import com.deuktemsiru.dto.UpdateNotificationSettingsRequest
 import com.deuktemsiru.security.CurrentMemberId
 import com.deuktemsiru.service.MemberService
+import io.swagger.v3.oas.annotations.tags.Tag
 import org.springframework.web.bind.annotation.*
 
 data class MemberUpdateRequest(
@@ -15,6 +16,7 @@ data class MemberUpdateRequest(
     val phone: String? = null,
 )
 
+@Tag(name = "Members", description = "회원 프로필, 통계, 알림 설정 API")
 @RestController
 @RequestMapping("/api/v1/members")
 class MemberController(

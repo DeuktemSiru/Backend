@@ -7,12 +7,14 @@ import com.deuktemsiru.dto.SettlementListResponse
 import com.deuktemsiru.dto.SettlementWithdrawRequest
 import com.deuktemsiru.security.CurrentMemberId
 import com.deuktemsiru.service.SettlementService
+import io.swagger.v3.oas.annotations.tags.Tag
 import org.springframework.web.bind.annotation.*
 import java.time.Clock
 import java.time.LocalDate
 
 // ── Controller ────────────────────────────────────────────────────────────────
 
+@Tag(name = "Seller Settlements", description = "판매자 정산 API")
 @RestController
 @RequestMapping("/api/v1/sellers/settlements")
 class SellerSettlementController(

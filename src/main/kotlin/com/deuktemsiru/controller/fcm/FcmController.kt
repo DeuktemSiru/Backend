@@ -4,6 +4,7 @@ import com.deuktemsiru.common.ApiResponse
 import com.deuktemsiru.common.ok
 import com.deuktemsiru.security.CurrentMemberId
 import com.deuktemsiru.service.FcmService
+import io.swagger.v3.oas.annotations.tags.Tag
 import org.springframework.web.bind.annotation.*
 
 // ── Request DTOs ──────────────────────────────────────────────────────────────
@@ -15,6 +16,7 @@ data class FcmTokenRequest(
 
 // ── Controller ────────────────────────────────────────────────────────────────
 
+@Tag(name = "FCM", description = "FCM 토큰 등록 API")
 @RestController
 @RequestMapping("/api/v1/fcm")
 class FcmController(

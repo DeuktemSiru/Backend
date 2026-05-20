@@ -6,12 +6,14 @@ import com.deuktemsiru.common.toLocalDateOrThrow
 import com.deuktemsiru.dto.SalesResponse
 import com.deuktemsiru.security.CurrentMemberId
 import com.deuktemsiru.service.OrderService
+import io.swagger.v3.oas.annotations.tags.Tag
 import org.springframework.web.bind.annotation.*
 import java.time.Clock
 import java.time.LocalDate
 
 // ── Controller ────────────────────────────────────────────────────────────────
 
+@Tag(name = "Seller Sales", description = "판매자 매출 요약 API")
 @RestController
 @RequestMapping("/api/v1/sellers/sales")
 class SellerSalesController(

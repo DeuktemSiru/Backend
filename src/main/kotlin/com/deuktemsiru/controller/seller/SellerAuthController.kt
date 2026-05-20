@@ -5,6 +5,7 @@ import com.deuktemsiru.common.created
 import com.deuktemsiru.entity.BusinessInfo
 import com.deuktemsiru.security.CurrentMemberId
 import com.deuktemsiru.service.SellerAppService
+import io.swagger.v3.oas.annotations.tags.Tag
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.*
 
@@ -31,6 +32,7 @@ data class BusinessInfoResponse(
     }
 }
 
+@Tag(name = "Seller Auth", description = "판매자 사업자 정보 API")
 @RestController
 @RequestMapping("/api/v1/sellers")
 class SellerAuthController(

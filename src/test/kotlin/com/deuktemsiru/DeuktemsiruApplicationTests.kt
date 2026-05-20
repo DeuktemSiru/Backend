@@ -18,12 +18,20 @@ import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc
+import org.springframework.test.web.servlet.MockMvc
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
+import org.springframework.test.web.servlet.result.MockMvcResultMatchers.content
+import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
+import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import org.springframework.transaction.annotation.Transactional
 import org.testcontainers.containers.PostgreSQLContainer
 import org.testcontainers.junit.jupiter.Container
 import org.testcontainers.junit.jupiter.Testcontainers
+import org.hamcrest.Matchers.containsString
 
 @SpringBootTest
+@AutoConfigureMockMvc
 @Transactional
 @Testcontainers(disabledWithoutDocker = true)
 class DeuktemsiruApplicationTests {
@@ -49,8 +57,34 @@ class DeuktemsiruApplicationTests {
     @Autowired
     private lateinit var productRepository: ProductRepository
 
+    @Autowired
+    private lateinit var mockMvc: MockMvc
+
     @Test
     fun contextLoads() {
+    }
+
+    @Test
+    fun `openapi json is publicly available and documents core api groups`() {
+        mockMvc.perform(get("/v3/api-docs"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.info.title").value("Deuktemsiru API"))
+            .andExpect(content().string(containsString("/api/v1/auth/debug/login")))
+            .andExpect(content().string(containsString("/api/v1/products")))
+            .andExpect(content().string(containsString("/api/v1/cart")))
+            .andExpect(content().string(containsString("Buyer Products")))
+            .andExpect(content().string(containsString("Seller Orders")))
+    }
+
+    @Test
+    fun `protected buyer api rejects requests without bearer token`() {
+        mockMvc.perform(get("/api/v1/cart"))
+            .andExpect { result ->
+                assertTrue(
+                    result.response.status == 401 || result.response.status == 403,
+                    "Expected unauthenticated cart request to be rejected, got ${result.response.status}",
+                )
+            }
     }
 
     @Test

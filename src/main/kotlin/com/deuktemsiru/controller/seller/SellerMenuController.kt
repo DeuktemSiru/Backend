@@ -9,6 +9,7 @@ import com.deuktemsiru.dto.SellerMenuItemRequest
 import com.deuktemsiru.dto.SellerMenuItemUpdateRequest
 import com.deuktemsiru.security.CurrentMemberId
 import com.deuktemsiru.service.SellerAppService
+import io.swagger.v3.oas.annotations.tags.Tag
 import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.*
@@ -16,6 +17,7 @@ import org.springframework.web.multipart.MultipartFile
 
 // ── Controller ────────────────────────────────────────────────────────────────
 
+@Tag(name = "Seller Menu", description = "판매자 메뉴 관리 API")
 @RestController
 @RequestMapping("/api/v1/sellers/menu-items")
 class SellerMenuController(

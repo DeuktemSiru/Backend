@@ -5,6 +5,7 @@ import com.deuktemsiru.common.ok
 import com.deuktemsiru.dto.WishlistItemResponse
 import com.deuktemsiru.security.CurrentMemberId
 import com.deuktemsiru.service.StoreService
+import io.swagger.v3.oas.annotations.tags.Tag
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.*
@@ -12,6 +13,7 @@ import org.springframework.web.bind.annotation.*
 data class WishlistToggleResponse(val storeId: Long, val isWishlisted: Boolean)
 data class WishlistListResponse(val wishlists: List<WishlistItemResponse>)
 
+@Tag(name = "Wishlist", description = "구매자 찜 API")
 @RestController
 @RequestMapping("/api/v1/wishlist")
 class WishlistController(
