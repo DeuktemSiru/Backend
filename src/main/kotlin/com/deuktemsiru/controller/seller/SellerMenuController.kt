@@ -63,7 +63,7 @@ class SellerMenuController(
      * PATCH /api/v1/sellers/menu-items/{menuItemId}
      * 메뉴 수정
      */
-    @PatchMapping("/{menuItemId}")
+    @RequestMapping("/{menuItemId}", method = [RequestMethod.PATCH, RequestMethod.POST])
     fun updateMenuItem(
         @CurrentMemberId sellerId: Long,
         @PathVariable menuItemId: Long,
@@ -80,6 +80,17 @@ class SellerMenuController(
     fun deleteMenuItem(
         @CurrentMemberId sellerId: Long,
         @PathVariable menuItemId: Long,
+    ): ApiResponse<Unit> = deleteMenuItemInternal(sellerId, menuItemId)
+
+    @PostMapping("/{menuItemId}/delete")
+    fun deleteMenuItemViaPost(
+        @CurrentMemberId sellerId: Long,
+        @PathVariable menuItemId: Long,
+    ): ApiResponse<Unit> = deleteMenuItemInternal(sellerId, menuItemId)
+
+    private fun deleteMenuItemInternal(
+        sellerId: Long,
+        menuItemId: Long,
     ): ApiResponse<Unit> {
         sellerAppService.deleteMenu(sellerId, menuItemId)
         return ok(Unit, "메뉴가 삭제되었습니다.")

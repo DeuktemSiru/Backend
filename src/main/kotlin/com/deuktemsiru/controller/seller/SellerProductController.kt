@@ -63,9 +63,9 @@ class SellerProductController(
 
     /**
      * PATCH /api/v1/sellers/products/{productId}/status
-     * 판매 상품 상태 변경 (SOLD_OUT / EXPIRED)
+     * 판매 상품 상태 변경 (AVAILABLE / PAUSED / EXPIRED)
      */
-    @PatchMapping("/{productId}/status")
+    @RequestMapping("/{productId}/status", method = [RequestMethod.PATCH, RequestMethod.POST])
     fun updateProduct(
         @CurrentMemberId sellerId: Long,
         @PathVariable productId: Long,
@@ -74,7 +74,7 @@ class SellerProductController(
         return ok(sellerAppService.updateProductStatus(sellerId, productId, req))
     }
 
-    @PatchMapping("/{productId}")
+    @RequestMapping("/{productId}", method = [RequestMethod.PATCH, RequestMethod.POST])
     fun updateProductDetails(
         @CurrentMemberId sellerId: Long,
         @PathVariable productId: Long,
@@ -91,6 +91,17 @@ class SellerProductController(
     fun deleteProduct(
         @CurrentMemberId sellerId: Long,
         @PathVariable productId: Long,
+    ): ApiResponse<Unit> = deleteProductInternal(sellerId, productId)
+
+    @PostMapping("/{productId}/delete")
+    fun deleteProductViaPost(
+        @CurrentMemberId sellerId: Long,
+        @PathVariable productId: Long,
+    ): ApiResponse<Unit> = deleteProductInternal(sellerId, productId)
+
+    private fun deleteProductInternal(
+        sellerId: Long,
+        productId: Long,
     ): ApiResponse<Unit> {
         sellerAppService.deleteProduct(sellerId, productId)
         return ok(Unit, "판매 상품이 삭제되었습니다.")

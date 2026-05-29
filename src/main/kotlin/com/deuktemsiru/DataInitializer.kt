@@ -171,7 +171,7 @@ class DataInitializer(
             .filter { it.name.startsWith("오늘 마감할인 ") }
             .onEach { product ->
                 product.availableDate = LocalDate.now()
-                if (product.quantityRemaining > 0 && product.status != ProductStatus.DELETED) {
+                if (product.quantityRemaining > 0 && product.status == ProductStatus.SOLD_OUT) {
                     product.status = ProductStatus.AVAILABLE
                 }
             }

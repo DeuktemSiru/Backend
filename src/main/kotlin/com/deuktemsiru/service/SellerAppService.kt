@@ -174,7 +174,11 @@ class SellerAppService(
             require(it >= 0) { "잔여 수량은 0개 이상이어야 합니다." }
             require(it <= product.quantityTotal) { "잔여 수량은 총 수량보다 많을 수 없습니다." }
             product.quantityRemaining = it
-            product.status = if (it == 0) ProductStatus.SOLD_OUT else ProductStatus.AVAILABLE
+            product.status = when {
+                it == 0 -> ProductStatus.SOLD_OUT
+                product.status == ProductStatus.SOLD_OUT -> ProductStatus.AVAILABLE
+                else -> product.status
+            }
         }
         return SellerSaleItemResponse.from(product)
     }

@@ -76,7 +76,7 @@ class Product(
     val images: MutableList<ProductImage> = mutableListOf(),
 )
 
-enum class ProductStatus { AVAILABLE, SOLD_OUT, EXPIRED, DELETED }
+enum class ProductStatus { AVAILABLE, PAUSED, SOLD_OUT, EXPIRED, DELETED }
 
 val Product.discountRate: Int
     get() = if (originalPrice > 0) ((originalPrice - discountPrice) * 100 / originalPrice).coerceAtLeast(0) else 0
@@ -90,9 +90,9 @@ fun Product.requirePurchasableOn(date: LocalDate, quantity: Int? = null) {
 fun Product.changeSaleStatus(nextStatus: ProductStatus) {
     require(status != ProductStatus.DELETED) { "삭제된 상품은 상태를 변경할 수 없습니다." }
     require(nextStatus != ProductStatus.DELETED) { "상품 삭제는 삭제 API를 사용해 주세요." }
-    require(nextStatus != ProductStatus.AVAILABLE || quantityRemaining > 0) {
+    require(nextStatus != ProductStatus.SOLD_OUT) { "품절은 잔여 수량이 0개일 때 자동으로 적용됩니다." }
+    require(nextStatus !in setOf(ProductStatus.AVAILABLE, ProductStatus.PAUSED) || quantityRemaining > 0) {
         "잔여 수량이 없는 상품은 먼저 수량을 수정해 주세요."
     }
     status = nextStatus
-    if (nextStatus == ProductStatus.SOLD_OUT) quantityRemaining = 0
 }

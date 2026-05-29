@@ -3,6 +3,7 @@ package com.deuktemsiru
 import com.deuktemsiru.dto.CreateOrderRequest
 import com.deuktemsiru.dto.OrderItemRequest
 import com.deuktemsiru.dto.UpdateOrderStatusRequest
+import com.deuktemsiru.entity.changeSaleStatus
 import com.deuktemsiru.entity.OrderStatus
 import com.deuktemsiru.entity.ProductStatus
 import com.deuktemsiru.repository.MemberRepository
@@ -156,6 +157,35 @@ class DeuktemsiruApplicationTests {
         assertEquals(OrderStatus.PENDING, order.status)
         assertEquals(0, reloaded.quantityRemaining)
         assertEquals(ProductStatus.SOLD_OUT, reloaded.status)
+    }
+
+    @Test
+    fun `manual pause preserves stock so seller can reopen sale`() {
+        val store = storeRepository.findAll().first()
+        val product = productRepository.findByStore(store).first()
+        val originalStock = product.quantityRemaining
+
+        product.changeSaleStatus(ProductStatus.PAUSED)
+        assertEquals(ProductStatus.PAUSED, product.status)
+        assertEquals(originalStock, product.quantityRemaining)
+
+        product.changeSaleStatus(ProductStatus.AVAILABLE)
+        assertEquals(ProductStatus.AVAILABLE, product.status)
+        assertEquals(originalStock, product.quantityRemaining)
+    }
+
+    @Test
+    fun `seller cannot manually mark product sold out without changing stock`() {
+        val store = storeRepository.findAll().first()
+        val product = productRepository.findByStore(store).first()
+        val originalStock = product.quantityRemaining
+
+        assertThrows(IllegalArgumentException::class.java) {
+            product.changeSaleStatus(ProductStatus.SOLD_OUT)
+        }
+
+        assertEquals(ProductStatus.AVAILABLE, product.status)
+        assertEquals(originalStock, product.quantityRemaining)
     }
 
     @Test
