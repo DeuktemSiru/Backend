@@ -82,6 +82,7 @@ val Product.discountRate: Int
     get() = if (originalPrice > 0) ((originalPrice - discountPrice) * 100 / originalPrice).coerceAtLeast(0) else 0
 
 fun Product.requirePurchasableOn(date: LocalDate, quantity: Int? = null) {
+    require(store.isVerified) { "${name}은(는) 승인되지 않은 매장의 상품입니다." }
     require(status == ProductStatus.AVAILABLE) { "${name}은(는) 구매 불가 상태입니다." }
     require(availableDate == date) { "${name}은(는) 오늘 구매 가능한 상품이 아닙니다." }
     quantity?.let { require(quantityRemaining >= it) { "${name} 재고가 부족합니다." } }

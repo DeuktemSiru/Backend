@@ -42,14 +42,14 @@ class MenuImageStorageService(
     }
 
     private fun hasAllowedImageSignature(image: MultipartFile): Boolean {
-        val header = image.inputStream.use { input -> input.readNBytes(12) }
-        if (header.size < 4) return false
-        val isJpeg = header[0] == 0xFF.toByte() && header[1] == 0xD8.toByte() && header[2] == 0xFF.toByte()
-        val isPng = header.copyOfRange(0, 4).contentEquals(byteArrayOf(0x89.toByte(), 0x50.toByte(), 0x4E.toByte(), 0x47.toByte()))
-        val isGif = header.copyOfRange(0, 3).contentEquals(byteArrayOf(0x47.toByte(), 0x49.toByte(), 0x46.toByte()))
-        val isWebp = header.size >= 12 &&
-            header.copyOfRange(0, 4).contentEquals(byteArrayOf(0x52.toByte(), 0x49.toByte(), 0x46.toByte(), 0x46.toByte())) &&
-            header.copyOfRange(8, 12).contentEquals(byteArrayOf(0x57.toByte(), 0x45.toByte(), 0x42.toByte(), 0x50.toByte()))
-        return isJpeg || isPng || isGif || isWebp
+        val header = image.inputStream.use { it.readNBytes(12) }
+        fun matches(offset: Int, vararg magic: Int) =
+            header.size >= offset + magic.size &&
+                magic.withIndex().all { (i, byte) -> header[offset + i] == byte.toByte() }
+
+        return matches(0, 0xFF, 0xD8, 0xFF) ||                                       // JPEG
+            matches(0, 0x89, 0x50, 0x4E, 0x47) ||                                    // PNG
+            matches(0, 0x47, 0x49, 0x46) ||                                          // GIF
+            (matches(0, 0x52, 0x49, 0x46, 0x46) && matches(8, 0x57, 0x45, 0x42, 0x50)) // WEBP
     }
 }

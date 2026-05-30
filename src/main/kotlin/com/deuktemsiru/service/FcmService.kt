@@ -2,7 +2,11 @@ package com.deuktemsiru.service
 
 import com.deuktemsiru.entity.FcmToken
 import com.deuktemsiru.repository.FcmTokenRepository
+import com.google.firebase.messaging.FirebaseMessaging
+import com.google.firebase.messaging.MulticastMessage
+import com.google.firebase.messaging.Notification
 import org.slf4j.LoggerFactory
+import org.springframework.beans.factory.ObjectProvider
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 
@@ -11,6 +15,7 @@ import org.springframework.transaction.annotation.Transactional
 class FcmService(
     private val fcmTokenRepository: FcmTokenRepository,
     private val memberService: MemberService,
+    private val firebaseMessaging: ObjectProvider<FirebaseMessaging>,
 ) {
     private val log = LoggerFactory.getLogger(FcmService::class.java)
 
@@ -40,14 +45,17 @@ class FcmService(
     }
 
     fun sendToMember(memberId: Long, title: String, body: String): Int {
+        val sender = firebaseMessaging.ifAvailable ?: return 0
         val member = memberService.findMember(memberId)
-        val activeTokens = fcmTokenRepository.findByMemberAndIsActiveTrue(member)
-        // Firebase Admin SDK 설정이 없는 로컬/과제 환경에서는 DB 알림을 실제 발송원으로 삼고,
-        // 활성 토큰 개수를 반환해 운영 연동 지점을 명확히 남긴다.
-        return activeTokens.size.also {
-            if (it > 0) {
-                log.info("FCM stub: {} token(s), title={}, body={}", it, title, body)
-            }
-        }
+        val tokens = fcmTokenRepository.findByMemberAndIsActiveTrue(member).map { it.token }
+        if (tokens.isEmpty()) return 0
+
+        val message = MulticastMessage.builder()
+            .addAllTokens(tokens)
+            .setNotification(Notification.builder().setTitle(title).setBody(body).build())
+            .build()
+        return runCatching { sender.sendEachForMulticast(message).successCount }
+            .onFailure { log.error("FCM 발송에 실패했습니다. memberId={}", memberId, it) }
+            .getOrDefault(0)
     }
 }

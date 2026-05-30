@@ -20,21 +20,6 @@ data class SaleItemRequest(
     val allergenInfo: String? = null,
 )
 
-data class SaleItemForm(
-    val name: String,
-    val discountPrice: Int,
-    val originalPrice: Int,
-    val quantityTotal: Int,
-    val pickupStart: String,
-    val pickupEnd: String,
-    val availableDate: String,
-    val menuItemId: Long? = null,
-    val madeAt: String? = null,
-    val allergenInfo: String? = null,
-) {
-    fun toRequest() = SaleItemRequest(menuItemId, name, discountPrice, originalPrice, quantityTotal, madeAt, pickupStart, pickupEnd, availableDate, allergenInfo)
-}
-
 data class UpdateSaleStatusRequest(
     val status: String,
 )
@@ -59,15 +44,15 @@ data class SellerSaleItemResponse(
 ) {
     companion object {
         fun from(product: Product) = SellerSaleItemResponse(
-            productId = product.summary.productId,
-            name = product.summary.name,
-            originalPrice = product.summary.originalPrice,
-            discountPrice = product.summary.discountPrice,
-            quantityTotal = product.summary.quantityTotal,
-            quantityRemaining = product.summary.quantityRemaining,
+            productId = product.productId,
+            name = product.name,
+            originalPrice = product.originalPrice,
+            discountPrice = product.discountPrice,
+            quantityTotal = product.quantityTotal,
+            quantityRemaining = product.quantityRemaining,
             status = product.status.name,
-            pickupStart = product.summary.pickupStart,
-            pickupEnd = product.summary.pickupEnd,
+            pickupStart = product.pickupStart.toString(),
+            pickupEnd = product.pickupEnd.toString(),
         )
     }
 }
@@ -79,15 +64,6 @@ data class SellerMenuItemRequest(
     val originalPrice: Int,
     val allergenInfo: String? = null,
 )
-
-data class SellerMenuItemForm(
-    val name: String,
-    val originalPrice: Int,
-    val description: String? = null,
-    val allergenInfo: String? = null,
-) {
-    fun toRequest() = SellerMenuItemRequest(name, description, originalPrice, allergenInfo)
-}
 
 data class SellerMenuItemUpdateRequest(
     val name: String? = null,
@@ -148,18 +124,6 @@ data class CreateStoreRequest(
     val categories: List<String>,
 )
 
-data class CreateStoreForm(
-    val name: String,
-    val description: String? = null,
-    val address: String,
-    val latitude: Double,
-    val longitude: Double,
-    val phone: String? = null,
-    val categories: List<String>,
-) {
-    fun toRequest() = CreateStoreRequest(name, description, address, latitude, longitude, phone, categories)
-}
-
 data class CreateStoreResponse(val storeId: Long, val name: String) {
     companion object {
         fun from(store: Store) = CreateStoreResponse(store.storeId, store.name)
@@ -183,26 +147,3 @@ data class SellerNotificationResponse(
 )
 
 internal fun String.toProductStatus(): ProductStatus = toEnumOrThrow("판매 상태")
-
-internal data class ProductSummary(
-    val productId: Long,
-    val name: String,
-    val originalPrice: Int,
-    val discountPrice: Int,
-    val quantityTotal: Int,
-    val quantityRemaining: Int,
-    val pickupStart: String,
-    val pickupEnd: String,
-)
-
-internal val Product.summary: ProductSummary
-    get() = ProductSummary(
-        productId = productId,
-        name = name,
-        originalPrice = originalPrice,
-        discountPrice = discountPrice,
-        quantityTotal = quantityTotal,
-        quantityRemaining = quantityRemaining,
-        pickupStart = pickupStart.toString(),
-        pickupEnd = pickupEnd.toString(),
-    )

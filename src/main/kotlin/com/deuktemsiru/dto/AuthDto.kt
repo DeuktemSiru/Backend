@@ -1,4 +1,4 @@
-package com.deuktemsiru.auth.dto
+package com.deuktemsiru.dto
 
 import com.deuktemsiru.entity.MemberRole
 import io.swagger.v3.oas.annotations.media.Schema

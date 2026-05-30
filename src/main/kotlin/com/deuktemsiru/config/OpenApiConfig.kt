@@ -1,7 +1,6 @@
 package com.deuktemsiru.config
 
 import io.swagger.v3.oas.models.Components
-import io.swagger.v3.oas.models.ExternalDocumentation
 import io.swagger.v3.oas.models.OpenAPI
 import io.swagger.v3.oas.models.info.Info
 import io.swagger.v3.oas.models.security.SecurityRequirement
@@ -32,11 +31,6 @@ class OpenApiConfig {
                         """.trimIndent(),
                     )
                     .version("v1"),
-            )
-            .externalDocs(
-                ExternalDocumentation()
-                    .description("Postman collection and usage guide")
-                    .url("/docs/postman"),
             )
             .servers(
                 listOf(

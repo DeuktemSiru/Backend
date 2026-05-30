@@ -16,6 +16,7 @@ data class OrderItemRequest(
 data class CreateOrderRequest(
     val items: List<OrderItemRequest>,
     val paymentMethod: String? = null,  // SIRU / CARD / CASH (TBD)
+    val pickupTime: String? = null,
 )
 
 // ── 응답 공통 ─────────────────────────────────────────────────────────────────
@@ -29,6 +30,7 @@ data class PaymentInfo(
 data class CreateOrderResponse(
     val orderId: Long,
     val pickupCode: String?,
+    val pickupTime: String?,
     val status: OrderStatus,
     val totalPrice: Int,
     val payment: PaymentInfo,
@@ -37,6 +39,7 @@ data class CreateOrderResponse(
         fun from(order: Orders, payment: Payment?) = CreateOrderResponse(
             orderId = order.orderId,
             pickupCode = order.pickupCode,
+            pickupTime = order.pickupTime?.toString(),
             status = order.status,
             totalPrice = order.totalPrice,
             payment = PaymentInfo(
@@ -66,8 +69,6 @@ data class OrderItemDetailResponse(
     }
 }
 
-fun OrderItem.toDetailResponse() = OrderItemDetailResponse.from(this)
-
 data class OrderDetailResponse(
     val orderId: Long,
     val orderNumber: String,
@@ -84,8 +85,9 @@ data class OrderDetailResponse(
     companion object {
         fun from(order: Orders, payment: Payment? = null): OrderDetailResponse {
             val firstProduct = order.items.firstOrNull()?.product
-            // B6: 주문 항목이 없을 때 NPE 방지 및 명시적 fallback 메시지 제공
-            val pickupTime = firstProduct?.let { "${it.pickupStart}~${it.pickupEnd}" } ?: "정보 없음"
+            val pickupTime = order.pickupTime?.toString()
+                ?: firstProduct?.let { "${it.pickupStart}~${it.pickupEnd}" }
+                ?: "정보 없음"
             return OrderDetailResponse(
                 orderId = order.orderId,
                 orderNumber = "#${order.orderId}",
@@ -139,7 +141,6 @@ data class PickupConfirmRequest(val pickupCode: String)
 
 data class DailySales(val date: String, val amount: Int)
 data class TopProduct(val productName: String, val soldCount: Int)
-data class TopMenu(val name: String, val count: Int)
 
 data class SalesResponse(
     val totalAmount: Int,
@@ -147,11 +148,4 @@ data class SalesResponse(
     val chartData: List<DailySales>,
     val topProducts: List<TopProduct>,
     val carbonSavedKg: Double = 0.0,
-)
-
-data class SellerSalesResponse(
-    val totalAmount: Int,
-    val totalOrders: Int,
-    val chartData: List<DailySales>,
-    val topMenus: List<TopMenu>,
 )

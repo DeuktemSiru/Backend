@@ -27,23 +27,21 @@ data class StoreListItemResponse(
             distanceM: Int = 0,
             representativeProduct: Product? = null,
             isWishlisted: Boolean = false,
-        ): StoreListItemResponse {
-            return StoreListItemResponse(
-                storeId = store.storeId,
-                name = store.name,
-                thumbnailUrl = store.thumbnailUrl,
-                distanceM = distanceM,
-                category = store.categories.firstOrNull()?.category?.name ?: "OTHER",
-                ratingAvg = store.ratingAvg,
-                reviewCount = store.reviewCount,
-                availableProductCount = availableProductCount,
-                representativeOriginalPrice = representativeProduct?.originalPrice ?: 0,
-                representativeDiscountPrice = representativeProduct?.discountPrice ?: 0,
-                representativeDiscountRate = representativeProduct?.discountRate ?: 0,
-                representativePickupEnd = representativeProduct?.pickupEnd?.toString(),
-                isWishlisted = isWishlisted,
-            )
-        }
+        ) = StoreListItemResponse(
+            storeId = store.storeId,
+            name = store.name,
+            thumbnailUrl = store.thumbnailUrl,
+            distanceM = distanceM,
+            category = store.categories.firstOrNull()?.category?.name ?: "OTHER",
+            ratingAvg = store.ratingAvg,
+            reviewCount = store.reviewCount,
+            availableProductCount = availableProductCount,
+            representativeOriginalPrice = representativeProduct?.originalPrice ?: 0,
+            representativeDiscountPrice = representativeProduct?.discountPrice ?: 0,
+            representativeDiscountRate = representativeProduct?.discountRate ?: 0,
+            representativePickupEnd = representativeProduct?.pickupEnd?.toString(),
+            isWishlisted = isWishlisted,
+        )
     }
 }
 
@@ -58,15 +56,15 @@ data class StoreProductItem(
     val pickupEnd: String,
     val status: String,
 ) {
-        companion object {
-            fun from(product: Product) = StoreProductItem(
-            productId = product.summary.productId,
-            name = product.summary.name,
-            originalPrice = product.summary.originalPrice,
-            discountPrice = product.summary.discountPrice,
-            quantityRemaining = product.summary.quantityRemaining,
-            pickupStart = product.summary.pickupStart,
-            pickupEnd = product.summary.pickupEnd,
+    companion object {
+        fun from(product: Product) = StoreProductItem(
+            productId = product.productId,
+            name = product.name,
+            originalPrice = product.originalPrice,
+            discountPrice = product.discountPrice,
+            quantityRemaining = product.quantityRemaining,
+            pickupStart = product.pickupStart.toString(),
+            pickupEnd = product.pickupEnd.toString(),
             status = product.status.name,
         )
     }
@@ -122,15 +120,15 @@ data class ProductListItemResponse(
     val storeName: String,
     val distanceM: Int,
 ) {
-        companion object {
-            fun from(product: Product, distanceM: Int = 0) = ProductListItemResponse(
-            productId = product.summary.productId,
-            name = product.summary.name,
+    companion object {
+        fun from(product: Product, distanceM: Int = 0) = ProductListItemResponse(
+            productId = product.productId,
+            name = product.name,
             thumbnailUrl = product.thumbnailUrl,
-            originalPrice = product.summary.originalPrice,
-            discountPrice = product.summary.discountPrice,
-            quantityRemaining = product.summary.quantityRemaining,
-            pickupEnd = product.summary.pickupEnd,
+            originalPrice = product.originalPrice,
+            discountPrice = product.discountPrice,
+            quantityRemaining = product.quantityRemaining,
+            pickupEnd = product.pickupEnd.toString(),
             status = product.status.name,
             storeName = product.store.name,
             distanceM = distanceM,

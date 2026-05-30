@@ -1,11 +1,11 @@
-package com.deuktemsiru.auth.controller
+package com.deuktemsiru.controller.auth
 
-import com.deuktemsiru.auth.dto.DebugLoginRequest
-import com.deuktemsiru.auth.dto.KakaoLoginRequest
-import com.deuktemsiru.auth.dto.LoginResponse
-import com.deuktemsiru.auth.dto.TokenRefreshRequest
-import com.deuktemsiru.auth.dto.TokenResponse
-import com.deuktemsiru.auth.service.AuthService
+import com.deuktemsiru.dto.DebugLoginRequest
+import com.deuktemsiru.dto.KakaoLoginRequest
+import com.deuktemsiru.dto.LoginResponse
+import com.deuktemsiru.dto.TokenRefreshRequest
+import com.deuktemsiru.dto.TokenResponse
+import com.deuktemsiru.service.AuthService
 import com.deuktemsiru.common.ApiResponse
 import com.deuktemsiru.common.created
 import com.deuktemsiru.common.ok

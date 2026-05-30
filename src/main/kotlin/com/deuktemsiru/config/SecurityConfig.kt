@@ -35,6 +35,8 @@ class SecurityConfig(
                     "/actuator/health",
                     // 정적 업로드 파일
                     "/uploads/**",
+                    // 운영자 API — JWT가 아니라 AdminController의 X-Admin-Token 헤더로 인증한다.
+                    "/api/v1/admin/**",
                 )
                 if (devEndpointsEnabled) {
                     publicMatchers += "/api/v1/auth/debug/login"

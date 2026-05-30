@@ -45,4 +45,4 @@ class Settlement(
     val createdAt: LocalDateTime = LocalDateTime.now(),
 )
 
-enum class SettlementStatus { PENDING, COMPLETED }
+enum class SettlementStatus { PENDING, COMPLETED, REJECTED }

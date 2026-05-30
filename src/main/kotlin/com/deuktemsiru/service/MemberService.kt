@@ -26,9 +26,6 @@ class MemberService(
     fun findMemberForUpdate(memberId: Long): Member =
         memberRepository.findByIdForUpdate(memberId).orNotFound("사용자를 찾을 수 없습니다.")
 
-    fun findByEmail(email: String): Member =
-        memberRepository.findByEmail(email).orNotFound("사용자를 찾을 수 없습니다.")
-
     @Transactional
     fun updateProfile(memberId: Long, nickname: String?, phone: String?): Member {
         val member = findMember(memberId)
