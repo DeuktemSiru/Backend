@@ -1,49 +1,63 @@
-# Gradle
-.gradle/
-build/
-!**/src/main/**/build/
-!**/src/test/**/build/
-
-# IntelliJ IDEA / Android Studio
-.idea/
-*.iws
-*.iml
-*.ipr
-out/
-!**/src/main/**/out/
-!**/src/test/**/out/
-
-# Spring Boot
-HELP.md
-
-# Node / Newman
-node_modules/
-
-# Secrets & environment
-application-local.properties
-application-local.yml
-application-prod.yml
-*.env
-.env*
-*.pem
-
 # OS
 .DS_Store
+._*
 Thumbs.db
+Desktop.ini
 
-# Local SDK path (machine-specific)
-local.properties
+# Editors
+.idea/
+.vscode/
+*.swp
+*.swo
 
-# Claude Code project config
-.claude/
+# Environment
+.env
+.env.*
+!.env.example
+!.env.sample
+!.env.template
 
 # Logs
 *.log
 logs/
 
-# Compiled output
+# Gradle / Kotlin
+.gradle/
+.kotlin/
+build/
+!**/src/main/**/build/
+!**/src/test/**/build/
+out/
+!**/src/main/**/out/
+!**/src/test/**/out/
 *.class
 *.jar
 !gradle/wrapper/gradle-wrapper.jar
-*.war
-*.ear
+*.iml
+*.ipr
+*.iws
+local.properties
+
+# Spring Boot
+HELP.md
+application-local.properties
+application-local.yml
+application-local.yaml
+application-secret.properties
+application-secret.yml
+application-secret.yaml
+
+# Credentials
+serviceAccount*.json
+firebase-adminsdk*.json
+*.pem
+
+# Project-specific
+application-prod.yml
+*.env
+
+# Dependencies
+node_modules/
+
+# Local tools
+.claude/

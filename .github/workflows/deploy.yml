@@ -1,4 +1,4 @@
-name: Deploy Backend
+name: Deploy
 
 on:
   push:
@@ -10,13 +10,13 @@ permissions:
   contents: read
 
 concurrency:
-  group: deploy-backend-production
-  cancel-in-progress: true
+  group: deploy-prod
+  cancel-in-progress: false
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
 
     steps:
       - name: Checkout
@@ -37,46 +37,48 @@ jobs:
       - name: Build executable JAR
         run: ./gradlew clean check bootJar --stacktrace
 
-      - name: Prepare deployment artifact
+      - name: Locate executable JAR
+        id: jar
         run: |
-          set -euo pipefail
-          jar_path="$(find build/libs -maxdepth 1 -type f -name '*.jar' ! -name '*-plain.jar' | head -n 1)"
-          if [ -z "$jar_path" ]; then
-            echo "No executable JAR found in build/libs" >&2
-            exit 1
-          fi
-          mkdir -p deploy-package
-          cp "$jar_path" deploy-package/app.jar
+          jar="$(find build/libs -name '*.jar' ! -name '*-plain.jar' | head -n 1)"
+          test -n "$jar"
+          echo "path=$jar" >> "$GITHUB_OUTPUT"
 
-      - name: Upload JAR to EC2
-        uses: appleboy/scp-action@v0.1.7
+      - name: Upload test report
+        if: always()
+        uses: actions/upload-artifact@v4
         with:
-          host: ${{ secrets.EC2_HOST }}
-          username: ${{ secrets.EC2_USER }}
-          key: ${{ secrets.EC2_SSH_KEY }}
-          source: deploy-package/app.jar
-          target: /tmp/deuktemsiru-release
-          strip_components: 1
+          name: deploy-test-report
+          path: build/reports/tests/test
 
-      - name: Restart backend service
-        uses: appleboy/ssh-action@v1.2.0
-        with:
-          host: ${{ secrets.EC2_HOST }}
-          username: ${{ secrets.EC2_USER }}
-          key: ${{ secrets.EC2_SSH_KEY }}
-          script: |
-            set -euo pipefail
-            sudo install -o app -g app -m 0644 /tmp/deuktemsiru-release/app.jar /opt/deuktemsiru/app.jar
-            sudo systemctl restart deuktemsiru
+      - name: Configure SSH
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "${{ secrets.EC2_HOST }}" >> ~/.ssh/known_hosts
 
-            for attempt in $(seq 1 12); do
-              if curl -fsS http://127.0.0.1:8080/actuator/health; then
-                exit 0
-              fi
-              echo "Waiting for backend health check... (${attempt}/12)"
-              sleep 5
-            done
+      - name: Copy JAR to EC2
+        run: |
+          scp -i ~/.ssh/deploy_key "${{ steps.jar.outputs.path }}" \
+            "${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:/home/${{ secrets.EC2_USER }}/app.jar"
 
-            sudo systemctl status deuktemsiru --no-pager
-            sudo journalctl -u deuktemsiru -n 100 --no-pager
-            exit 1
+      # deploy.md "4. 수동 배포"의 서비스 교체·헬스체크 블록과 동일하다.
+      - name: Replace service and health check
+        run: |
+          ssh -i ~/.ssh/deploy_key "${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}" 'bash -s' <<'DEPLOY'
+          set -e
+          sudo systemctl stop deuktemsiru
+          sudo install -o app -g app -m 0644 "$HOME/app.jar" /opt/deuktemsiru/app.jar
+          sudo systemctl restart deuktemsiru
+          for i in $(seq 1 12); do
+            if curl -fsS http://127.0.0.1:8080/actuator/health; then exit 0; fi
+            sleep 5
+          done
+          sudo journalctl -u deuktemsiru -n 100 --no-pager
+          exit 1
+          DEPLOY
+
+      - name: Clean up SSH key
+        if: always()
+        run: rm -f ~/.ssh/deploy_key
