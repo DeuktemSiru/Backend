@@ -80,7 +80,15 @@ class AuthService(
      * 운영 환경에서는 SecurityConfig + dev-endpoints-enabled 플래그로 차단되어야 합니다.
      */
     @Transactional
-    fun debugLogin(role: MemberRole): LoginResponse {
+    fun debugLogin(role: MemberRole, email: String? = null): LoginResponse {
+        val normalizedEmail = email?.trim()?.takeIf { it.isNotBlank() }
+        if (role == MemberRole.SELLER && normalizedEmail != null) {
+            val seller = memberRepository.findByEmail(normalizedEmail)
+                .filter { it.role == MemberRole.SELLER }
+                .orElseThrow { NoSuchElementException("판매자 디버그 계정을 찾을 수 없습니다.") }
+            return issueTokens(seller)
+        }
+
         val debugUser = when (role) {
             MemberRole.CONSUMER -> DebugUser(
                 providerId = "kakao_buyer_1",
@@ -98,23 +106,7 @@ class AuthService(
             )
         }
 
-        val member = findOrCreateDebugMember(debugUser)
-
-        return issueTokens(member)
-    }
-
-    @Transactional
-    fun debugLogin(role: MemberRole, email: String?): LoginResponse {
-        val normalizedEmail = email?.trim()?.takeIf { it.isNotBlank() }
-        if (role != MemberRole.SELLER || normalizedEmail == null) {
-            return debugLogin(role)
-        }
-
-        val seller = memberRepository.findByEmail(normalizedEmail)
-            .filter { it.role == MemberRole.SELLER }
-            .orElseThrow { NoSuchElementException("판매자 디버그 계정을 찾을 수 없습니다.") }
-
-        return issueTokens(seller)
+        return issueTokens(findOrCreateDebugMember(debugUser))
     }
 
     /**
@@ -183,36 +175,33 @@ class AuthService(
             }
 
     private fun saveRefreshToken(member: Member, token: String) {
-        val expiredAt = now()
-            .plusSeconds(jwtService.refreshTokenExpirationSeconds)
         refreshTokenRepository.save(
-            RefreshToken(member = member, token = hashToken(token), expiredAt = expiredAt)
+            RefreshToken(
+                member = member,
+                token = hashToken(token),
+                expiredAt = now().plusSeconds(jwtService.refreshTokenExpirationSeconds),
+            )
         )
     }
 
     private fun issueTokens(member: Member): LoginResponse {
-        val accessToken = jwtService.createAccessToken(member)
         val refreshToken = jwtService.createRefreshToken(member)
         saveRefreshToken(member, refreshToken)
-        return buildLoginResponse(member, accessToken, refreshToken)
-    }
-
-    /** 리프레시 토큰을 SHA-256으로 해싱하여 DB에 평문이 저장되지 않도록 합니다. */
-    private fun hashToken(token: String): String {
-        val digest = MessageDigest.getInstance("SHA-256")
-        val hash = digest.digest(token.toByteArray(Charsets.UTF_8))
-        return Base64.getEncoder().encodeToString(hash)
-    }
-
-    private fun buildLoginResponse(member: Member, accessToken: String, refreshToken: String) =
-        LoginResponse(
-            accessToken = accessToken,
+        return LoginResponse(
+            accessToken = jwtService.createAccessToken(member),
             refreshToken = refreshToken,
             member = MemberSummary(
                 memberId = member.memberId,
                 nickname = member.nickname,
                 role = member.role.name,
             ),
+        )
+    }
+
+    /** 리프레시 토큰을 SHA-256으로 해싱하여 DB에 평문이 저장되지 않도록 합니다. */
+    private fun hashToken(token: String): String =
+        Base64.getEncoder().encodeToString(
+            MessageDigest.getInstance("SHA-256").digest(token.toByteArray(Charsets.UTF_8)),
         )
 
     private data class DebugUser(

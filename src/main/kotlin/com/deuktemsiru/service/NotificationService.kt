@@ -1,5 +1,6 @@
 package com.deuktemsiru.service
 
+import com.deuktemsiru.common.orNotFound
 import com.deuktemsiru.dto.NotificationResponse
 import com.deuktemsiru.entity.Notification
 import com.deuktemsiru.repository.NotificationRepository
@@ -27,21 +28,10 @@ class NotificationService(
         )
     }
 
-    fun getNotificationEntities(memberId: Long): List<Notification> {
-        val member = memberService.findMember(memberId)
-        return notificationRepository.findByMemberOrderByCreatedAtDesc(member)
-    }
-
     @Transactional
     fun markAsRead(memberId: Long, notificationId: Long) {
         val notification = findOwnedNotification(memberId, notificationId)
         notification.isRead = true
-    }
-
-    @Transactional
-    fun markAllAsRead(memberId: Long) {
-        val member = memberService.findMember(memberId)
-        notificationRepository.markAllUnreadAsRead(member)
     }
 
     @Transactional
@@ -52,6 +42,6 @@ class NotificationService(
 
     private fun findOwnedNotification(memberId: Long, notificationId: Long): Notification =
         notificationRepository.findById(notificationId)
-            .orElseThrow { NoSuchElementException("알림을 찾을 수 없습니다.") }
+            .orNotFound("알림을 찾을 수 없습니다.")
             .also { require(it.member.memberId == memberId) { "접근 권한이 없습니다." } }
 }

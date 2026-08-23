@@ -3,7 +3,6 @@ package com.deuktemsiru.controller.seller
 import com.deuktemsiru.common.ApiResponse
 import com.deuktemsiru.common.created
 import com.deuktemsiru.common.ok
-import com.deuktemsiru.dto.CreateStoreForm
 import com.deuktemsiru.dto.CreateStoreRequest
 import com.deuktemsiru.dto.CreateStoreResponse
 import com.deuktemsiru.dto.SellerStoreResponse
@@ -53,13 +52,13 @@ class SellerStoreController(
     @PostMapping(consumes = ["multipart/form-data"])
     fun createStore(
         @CurrentMemberId sellerId: Long,
-        @ModelAttribute form: CreateStoreForm,
+        @ModelAttribute req: CreateStoreRequest,
         @RequestParam(required = false) thumbnail: MultipartFile?,
         @RequestParam(required = false) images: List<MultipartFile>?,
     ): ResponseEntity<ApiResponse<CreateStoreResponse>> {
         val thumbnailUrl = menuImageStorageService.save(thumbnail)
         val imageUrls = images.orEmpty().mapNotNull { menuImageStorageService.save(it) }
-        return createdStore(CreateStoreResponse.from(storeService.createStore(sellerId, form.toRequest(), thumbnailUrl, imageUrls)))
+        return createdStore(CreateStoreResponse.from(storeService.createStore(sellerId, req, thumbnailUrl, imageUrls)))
     }
 
     /**

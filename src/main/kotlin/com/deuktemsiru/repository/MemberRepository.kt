@@ -11,7 +11,6 @@ import java.util.Optional
 interface MemberRepository : JpaRepository<Member, Long> {
     fun findByEmail(email: String): Optional<Member>
     fun findByProviderAndProviderId(provider: com.deuktemsiru.entity.MemberProvider, providerId: String): Optional<Member>
-    fun existsByEmail(email: String): Boolean
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select m from Member m where m.memberId = :id")

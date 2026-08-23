@@ -12,11 +12,10 @@ import com.deuktemsiru.dto.ProductListItemResponse
 import com.deuktemsiru.dto.StoreDetailResponse
 import com.deuktemsiru.dto.StoreListItemResponse
 import com.deuktemsiru.dto.StoreMarkerResponse
-import com.deuktemsiru.dto.StoreResponse
-import com.deuktemsiru.dto.UpdateStoreRequest
 import com.deuktemsiru.dto.WishlistItemResponse
 import com.deuktemsiru.entity.CategoryType
 import com.deuktemsiru.entity.MemberRole
+import com.deuktemsiru.entity.Product
 import com.deuktemsiru.entity.ProductStatus
 import com.deuktemsiru.entity.Store
 import com.deuktemsiru.entity.StoreCategory
@@ -51,65 +50,30 @@ class StoreService(
 ) {
     private data class StoreDisplaySnapshot(
         val availableProductCount: Int,
-        val representativeProduct: com.deuktemsiru.entity.Product?,
+        val representativeProduct: Product?,
     )
 
-    // ── 기존 판매자용 ──────────────────────────────────────────────────────────
-
-    fun getStores(userId: Long?): List<Store> {
-        return storeRepository.findAll()
-    }
-
-    fun getStore(storeId: Long, userId: Long?): StoreResponse {
-        val store = findStore(storeId)
-        val isWishlisted = userId?.let {
-            val member = memberService.findMember(it)
-            wishlistRepository.existsByMemberAndStore(member, store)
-        } ?: false
-        return StoreResponse.from(store, isWishlisted)
-    }
-
-    @Transactional
-    fun updateStore(sellerId: Long, req: UpdateStoreRequest): StoreResponse {
-        val store = storeOwnershipService.findSellerStore(sellerId)
-        req.description?.let { store.description = it }
-        req.phone?.let { store.phone = it }
-        return StoreResponse.from(store)
-    }
-
-    fun getSellerStore(sellerId: Long): StoreResponse {
-        return StoreResponse.from(storeOwnershipService.findSellerStore(sellerId))
-    }
+    // ── 찜 ────────────────────────────────────────────────────────────────────
 
     @Transactional
     fun toggleWishlist(userId: Long, storeId: Long): Boolean {
-        val (member, store, existing) = findWishlistEntry(userId, storeId)
-        return if (existing != null) {
+        val member = memberService.findMember(userId)
+        val store = findStore(storeId)
+        val existing = wishlistRepository.findByMemberAndStore(member, store).orElse(null)
+        if (existing != null) {
             wishlistRepository.delete(existing)
-            false
-        } else {
-            wishlistRepository.save(Wishlist(member = member, store = store))
-            true
+            return false
         }
-    }
-
-    @Transactional
-    fun addWishlist(userId: Long, storeId: Long) {
-        val (member, store, existing) = findWishlistEntry(userId, storeId)
-        if (existing != null) throw IllegalStateException("이미 찜한 가게입니다.")
         wishlistRepository.save(Wishlist(member = member, store = store))
+        return true
     }
 
     @Transactional
     fun removeWishlist(userId: Long, storeId: Long) {
-        val (_, _, existing) = findWishlistEntry(userId, storeId)
-        wishlistRepository.delete(existing ?: throw NoSuchElementException("찜한 가게가 아닙니다."))
-    }
-
-    private fun findWishlistEntry(userId: Long, storeId: Long): Triple<com.deuktemsiru.entity.Member, Store, Wishlist?> {
         val member = memberService.findMember(userId)
-        val store = findStore(storeId)
-        return Triple(member, store, wishlistRepository.findByMemberAndStore(member, store).orElse(null))
+        val existing = wishlistRepository.findByMemberAndStore(member, findStore(storeId))
+            .orNotFound("찜한 가게가 아닙니다.")
+        wishlistRepository.delete(existing)
     }
 
     fun findStore(storeId: Long) =
@@ -265,7 +229,12 @@ class StoreService(
     // ── 가게 등록 (POST /sellers/stores) ─────────────────────────────────────
 
     @Transactional
-    fun createStore(sellerId: Long, req: CreateStoreRequest, thumbnailUrl: String? = null): Store {
+    fun createStore(
+        sellerId: Long,
+        req: CreateStoreRequest,
+        thumbnailUrl: String? = null,
+        imageUrls: List<String> = emptyList(),
+    ): Store {
         val seller = memberService.findMember(sellerId)
         require(seller.role == MemberRole.SELLER) { "판매자 계정만 가게를 등록할 수 있습니다." }
         require(!storeRepository.existsByOwner(seller)) { "이미 등록된 가게가 있습니다." }
@@ -285,17 +254,6 @@ class StoreService(
             val categoryType = cat.toEnumOrThrow<CategoryType>("카테고리")
             storeCategoryRepository.save(StoreCategory(store = store, category = categoryType))
         }
-        return store
-    }
-
-    @Transactional
-    fun createStore(
-        sellerId: Long,
-        req: CreateStoreRequest,
-        thumbnailUrl: String?,
-        imageUrls: List<String>,
-    ): Store {
-        val store = createStore(sellerId, req, thumbnailUrl)
         imageUrls.forEachIndexed { index, imageUrl ->
             store.images += StoreImage(store = store, imageUrl = imageUrl, displayOrder = index)
         }
@@ -337,14 +295,14 @@ class StoreService(
             )
         }
 
-    private fun displayProductsByStore(stores: List<Store>, date: LocalDate): Map<Long, List<com.deuktemsiru.entity.Product>> {
+    private fun displayProductsByStore(stores: List<Store>, date: LocalDate): Map<Long, List<Product>> {
         if (stores.isEmpty()) return emptyMap()
         return productRepository
             .findByStoreInAndAvailableDateAndStatusAndQuantityRemainingGreaterThan(stores, date, ProductStatus.AVAILABLE, 0)
             .groupBy { it.store.storeId }
     }
 
-    private fun availableProducts(store: Store, date: LocalDate): List<com.deuktemsiru.entity.Product> =
+    private fun availableProducts(store: Store, date: LocalDate): List<Product> =
         productRepository.findByStoreAndAvailableDateAndStatusAndQuantityRemainingGreaterThan(
             store,
             date,
@@ -352,13 +310,12 @@ class StoreService(
             0,
         )
 
-    private fun representativeProduct(products: List<com.deuktemsiru.entity.Product>): com.deuktemsiru.entity.Product? {
-        return products.maxWithOrNull(
-            compareBy<com.deuktemsiru.entity.Product> {
+    private fun representativeProduct(products: List<Product>): Product? =
+        products.maxWithOrNull(
+            compareBy<Product> {
                 if (it.originalPrice > 0) (it.originalPrice - it.discountPrice).toDouble() / it.originalPrice else 0.0
             }.thenByDescending { it.quantityRemaining }
         )
-    }
 
     private fun distanceMeters(
         fromLatitude: Double?,

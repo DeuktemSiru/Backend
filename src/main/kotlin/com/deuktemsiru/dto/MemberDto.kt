@@ -94,10 +94,6 @@ data class MemberStatsResponse(
             totalOrders = stats.totalOrders,
         )
 
-        fun empty() = MemberStatsResponse(
-            totalSavedAmount = 0,
-            totalCarbonSavedKg = 0.0,
-            totalOrders = 0,
-        )
+        fun empty() = MemberStatsResponse(totalSavedAmount = 0, totalCarbonSavedKg = 0.0, totalOrders = 0)
     }
 }

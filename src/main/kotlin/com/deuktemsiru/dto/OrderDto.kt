@@ -66,8 +66,6 @@ data class OrderItemDetailResponse(
     }
 }
 
-fun OrderItem.toDetailResponse() = OrderItemDetailResponse.from(this)
-
 data class OrderDetailResponse(
     val orderId: Long,
     val orderNumber: String,
@@ -139,7 +137,6 @@ data class PickupConfirmRequest(val pickupCode: String)
 
 data class DailySales(val date: String, val amount: Int)
 data class TopProduct(val productName: String, val soldCount: Int)
-data class TopMenu(val name: String, val count: Int)
 
 data class SalesResponse(
     val totalAmount: Int,
@@ -147,11 +144,4 @@ data class SalesResponse(
     val chartData: List<DailySales>,
     val topProducts: List<TopProduct>,
     val carbonSavedKg: Double = 0.0,
-)
-
-data class SellerSalesResponse(
-    val totalAmount: Int,
-    val totalOrders: Int,
-    val chartData: List<DailySales>,
-    val topMenus: List<TopMenu>,
 )

@@ -35,7 +35,7 @@ class CartService(
         product.requirePurchasableOn(today)
 
         val existingItems = cartItemRepository.findByMemberOrderByCreatedAtAsc(member)
-        val existing = cartItemRepository.findByMemberAndProduct(member, product).orElse(null)
+        val existing = existingItems.firstOrNull { it.product.productId == product.productId }
         val nextQuantity = existing?.let { it.quantity + quantity } ?: quantity
         product.requirePurchasableOn(today, nextQuantity)
 

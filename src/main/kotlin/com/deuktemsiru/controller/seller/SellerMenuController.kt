@@ -3,7 +3,6 @@ package com.deuktemsiru.controller.seller
 import com.deuktemsiru.common.ApiResponse
 import com.deuktemsiru.common.created
 import com.deuktemsiru.common.ok
-import com.deuktemsiru.dto.SellerMenuItemForm
 import com.deuktemsiru.dto.SellerMenuItemResponse
 import com.deuktemsiru.dto.SellerMenuItemRequest
 import com.deuktemsiru.dto.SellerMenuItemUpdateRequest
@@ -53,10 +52,10 @@ class SellerMenuController(
     @PostMapping(consumes = [MediaType.MULTIPART_FORM_DATA_VALUE])
     fun addMenuItemWithImage(
         @CurrentMemberId sellerId: Long,
-        @ModelAttribute form: SellerMenuItemForm,
+        @ModelAttribute req: SellerMenuItemRequest,
         @RequestPart(required = false) image: MultipartFile?,
     ): ResponseEntity<ApiResponse<SellerMenuItemResponse>> {
-        return createdMenu(sellerAppService.createMenuWithImage(sellerId, form.toRequest(), image))
+        return createdMenu(sellerAppService.createMenuWithImage(sellerId, req, image))
     }
 
     /**

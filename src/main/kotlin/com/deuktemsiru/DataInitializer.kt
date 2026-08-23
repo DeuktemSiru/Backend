@@ -31,12 +31,12 @@ class DataInitializer(
         }
 
         val sellers = listOf(
-            SellerSeed("kakao_seller_1", "bakery@test.com", "김영희", "오이도굽는집"),
-            SellerSeed("kakao_seller_2", "cafe@siheung.test", "박민준", "배곧로스터리"),
-            SellerSeed("kakao_seller_3", "bunsik@siheung.test", "이수진", "정왕시장분식"),
-            SellerSeed("kakao_seller_4", "dosirak@siheung.test", "최하늘", "은행동찬찬도시락"),
-            SellerSeed("kakao_seller_5", "mart@siheung.test", "정다은", "목감우리반찬"),
-        ).map { createSeller(it) }
+            createSeller("kakao_seller_1", "bakery@test.com", "김영희", "오이도굽는집"),
+            createSeller("kakao_seller_2", "cafe@siheung.test", "박민준", "배곧로스터리"),
+            createSeller("kakao_seller_3", "bunsik@siheung.test", "이수진", "정왕시장분식"),
+            createSeller("kakao_seller_4", "dosirak@siheung.test", "최하늘", "은행동찬찬도시락"),
+            createSeller("kakao_seller_5", "mart@siheung.test", "정다은", "목감우리반찬"),
+        )
 
         createConsumer()
 
@@ -178,14 +178,14 @@ class DataInitializer(
         productRepository.saveAll(normalizedProducts)
     }
 
-    private fun createSeller(seed: SellerSeed): Member =
+    private fun createSeller(providerId: String, email: String, name: String, nickname: String): Member =
         memberRepository.save(
             Member(
                 provider = MemberProvider.KAKAO,
-                providerId = seed.providerId,
-                email = seed.email,
-                name = seed.name,
-                nickname = seed.nickname,
+                providerId = providerId,
+                email = email,
+                name = name,
+                nickname = nickname,
                 role = MemberRole.SELLER,
             )
         )
@@ -246,13 +246,6 @@ class DataInitializer(
         pickupEnd = pickupEnd,
         availableDate = LocalDate.now(),
         carbonSavedKg = carbonSavedKg,
-    )
-
-    private data class SellerSeed(
-        val providerId: String,
-        val email: String,
-        val name: String,
-        val nickname: String,
     )
 
     private data class StoreSeed(

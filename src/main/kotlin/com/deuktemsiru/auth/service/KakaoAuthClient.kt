@@ -3,7 +3,6 @@ package com.deuktemsiru.auth.service
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties
 import com.fasterxml.jackson.annotation.JsonProperty
 import com.fasterxml.jackson.databind.ObjectMapper
-import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import org.springframework.stereotype.Component
 import org.springframework.web.client.RestClient
 import org.springframework.web.client.RestClientResponseException
@@ -13,7 +12,7 @@ import org.springframework.web.client.RestClientResponseException
  * 앱에서 전달받은 카카오 액세스 토큰으로 사용자 정보를 조회합니다.
  */
 @Component
-class KakaoAuthClient {
+class KakaoAuthClient(private val objectMapper: ObjectMapper) {
 
     private val restClient = RestClient.create()
 
@@ -35,8 +34,6 @@ class KakaoAuthClient {
         val nickname: String?,
         @JsonProperty("profile_image_url") val profileImageUrl: String?,
     )
-
-    private val objectMapper = ObjectMapper().registerKotlinModule()
 
     fun getUserInfo(kakaoAccessToken: String): KakaoUserInfo {
         val json: String = try {

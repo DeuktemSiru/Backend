@@ -4,7 +4,6 @@ import com.deuktemsiru.common.ApiResponse
 import com.deuktemsiru.common.created
 import com.deuktemsiru.common.ok
 import com.deuktemsiru.common.toLocalDateOrThrow
-import com.deuktemsiru.dto.SaleItemForm
 import com.deuktemsiru.dto.SaleItemRequest
 import com.deuktemsiru.dto.SellerSaleItemResponse
 import com.deuktemsiru.dto.UpdateSaleItemRequest
@@ -55,10 +54,10 @@ class SellerProductController(
     @PostMapping(consumes = [MediaType.MULTIPART_FORM_DATA_VALUE])
     fun createProductWithImage(
         @CurrentMemberId sellerId: Long,
-        @ModelAttribute form: SaleItemForm,
+        @ModelAttribute req: SaleItemRequest,
         @RequestPart(required = false) images: List<MultipartFile>?,
     ): ResponseEntity<ApiResponse<SellerSaleItemResponse>> {
-        return createdProduct(sellerAppService.createProductWithImages(sellerId, form.toRequest(), images.orEmpty()))
+        return createdProduct(sellerAppService.createProduct(sellerId, req, images.orEmpty()))
     }
 
     /**

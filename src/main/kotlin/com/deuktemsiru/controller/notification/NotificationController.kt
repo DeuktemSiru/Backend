@@ -2,16 +2,11 @@ package com.deuktemsiru.controller.notification
 
 import com.deuktemsiru.common.ApiResponse
 import com.deuktemsiru.common.ok
-import com.deuktemsiru.dto.NotificationResponse
 import com.deuktemsiru.security.CurrentMemberId
+import com.deuktemsiru.service.NotificationListResult
 import com.deuktemsiru.service.NotificationService
 import io.swagger.v3.oas.annotations.tags.Tag
 import org.springframework.web.bind.annotation.*
-
-data class NotificationListResponse(
-    val notifications: List<NotificationResponse>,
-    val unreadCount: Int,
-)
 
 @Tag(name = "Notifications", description = "구매자 알림 API")
 @RestController
@@ -24,18 +19,8 @@ class NotificationController(
      * 알림 목록 + 안 읽은 알림 수
      */
     @GetMapping
-    fun getMyNotifications(
-        @CurrentMemberId memberId: Long,
-        @RequestParam(defaultValue = "0") page: Int,
-        @RequestParam(defaultValue = "20") size: Int,
-    ): ApiResponse<NotificationListResponse> {
-        val result = notificationService.getNotifications(memberId)
-        return ok(
-            NotificationListResponse(
-                notifications = result.notifications,
-                unreadCount = result.unreadCount,
-            )
-        )
+    fun getMyNotifications(@CurrentMemberId memberId: Long): ApiResponse<NotificationListResult> {
+        return ok(notificationService.getNotifications(memberId))
     }
 
     /**
