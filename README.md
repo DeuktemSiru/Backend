@@ -24,6 +24,7 @@
 | 기술 스택 | Kotlin, Java 21, Spring Boot 4, Spring Data JPA, PostgreSQL 16, Flyway |
 | 인증 | Spring Security + JWT (역할: `CONSUMER` / `SELLER`) |
 | API 문서 | Swagger UI `http://localhost:8080/swagger-ui/index.html` |
+| 알림 | DB 인앱 알림 + 선택적 Firebase Cloud Messaging |
 | 모니터링 | Actuator · Micrometer · Prometheus · Grafana |
 | 테스트 | JUnit 5, Testcontainers, Jacoco, k6, Postman/Newman |
 
@@ -147,6 +148,8 @@ docker-compose up -d
 | --- | --- | --- |
 | `SPRING_DATASOURCE_URL` | `jdbc:postgresql://localhost:5432/deuktemsiru` | DB 접속 (USERNAME/PASSWORD 동일 계열) |
 | `APP_JWT_SECRET` | 개발용 기본값 | JWT 서명 키 — **운영에서 반드시 교체** |
+| `APP_FCM_ENABLED` | `false` | `true`이면 Firebase 푸시 발송 활성화 |
+| `GOOGLE_APPLICATION_CREDENTIALS` | 없음 | Firebase 서비스 계정 JSON 경로 |
 | `SPRING_PROFILES_ACTIVE` | 없음 | `dev`(샘플 데이터·debug 로그인) / `prod`(Flyway 활성, 개발 엔드포인트 비활성) |
 
 운영 배포는 `./gradlew bootJar` 후 `SPRING_PROFILES_ACTIVE=prod`와 위 변수를 주입해 `java -jar build/libs/deuktemsiru-0.0.1-SNAPSHOT.jar`로 실행합니다.

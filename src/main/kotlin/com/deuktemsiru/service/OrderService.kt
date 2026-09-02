@@ -3,6 +3,7 @@ package com.deuktemsiru.service
 import com.deuktemsiru.common.toEnumOrNull
 import com.deuktemsiru.common.toEnumOrThrow
 import com.deuktemsiru.common.toLocalDateOrThrow
+import com.deuktemsiru.common.toLocalTimeOrThrow
 import com.deuktemsiru.common.nowDateTime
 import com.deuktemsiru.common.orNotFound
 import com.deuktemsiru.common.safePage
@@ -23,6 +24,7 @@ import com.deuktemsiru.entity.Orders
 import com.deuktemsiru.entity.Payment
 import com.deuktemsiru.entity.PaymentMethod
 import com.deuktemsiru.entity.PaymentStatus
+import com.deuktemsiru.entity.Product
 import com.deuktemsiru.entity.MemberStats
 import com.deuktemsiru.entity.ProductStatus
 import com.deuktemsiru.entity.Store
@@ -40,6 +42,7 @@ import java.security.SecureRandom
 import java.time.Clock
 import java.time.LocalDate
 import java.time.LocalDateTime
+import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 import java.util.UUID
 
@@ -74,23 +77,24 @@ class OrderService(
                 OrderItemRequest(productId = productId, quantity = quantity)
             }
 
-        val lockedProducts = orderItems
-            .map { it.productId }
-            .distinct()
-            .sorted()
-            .associateWith { productId ->
-                productRepository.findByIdForUpdate(productId)
-                    .orNotFound("상품을 찾을 수 없습니다.")
-            }
+        val lockedProducts = lockProducts(orderItems.map { it.productId })
 
         // 첫 번째 상품에서 가게 결정
         val firstProduct = lockedProducts[orderItems.first().productId]!!
         val store = firstProduct.store
+        val pickupTime = req.pickupTime?.toLocalTimeOrThrow("픽업 시간")
+        requirePickupTimeWithinWindows(
+            pickupTime,
+            orderItems.map { item ->
+                lockedProducts.getValue(item.productId).let { it.pickupStart to it.pickupEnd }
+            },
+        )
 
         val order = Orders(
             consumer = consumer,
             store = store,
             pickupCode = generatePickupCode(),
+            pickupTime = pickupTime,
         )
 
         order.items += orderItems.map { itemReq ->
@@ -285,6 +289,12 @@ class OrderService(
         return findOrder(orderId, forUpdate) { it.store.storeId == store.storeId }
     }
 
+    /** 데드락을 피하려고 상품 ID 오름차순으로 비관적 잠금을 건다. */
+    private fun lockProducts(productIds: List<Long>): Map<Long, Product> =
+        productIds.distinct().sorted().associateWith {
+            productRepository.findByIdForUpdate(it).orNotFound("상품을 찾을 수 없습니다.")
+        }
+
     private fun findOrder(orderId: Long, forUpdate: Boolean = false, canAccess: (Orders) -> Boolean): Orders {
         val order = if (forUpdate) orderRepository.findByIdForUpdate(orderId) else orderRepository.findById(orderId)
         return order
@@ -327,10 +337,12 @@ class OrderService(
             )
         }
 
+        val lockedProducts = lockProducts(order.items.map { it.product.productId })
         order.items.forEach { item ->
-            item.product.quantityRemaining += item.quantity
-            if (item.product.status == ProductStatus.SOLD_OUT) {
-                item.product.status = ProductStatus.AVAILABLE
+            val product = lockedProducts.getValue(item.product.productId)
+            product.quantityRemaining += item.quantity
+            if (product.status == ProductStatus.SOLD_OUT) {
+                product.status = ProductStatus.AVAILABLE
             }
         }
     }
@@ -433,5 +445,15 @@ class OrderService(
             end?.let { cb.lessThan(root.get("createdAt"), it) },
         )
         cb.and(*predicates.toTypedArray())
+    }
+}
+
+internal fun requirePickupTimeWithinWindows(
+    pickupTime: LocalTime?,
+    windows: List<Pair<LocalTime, LocalTime>>,
+) {
+    if (pickupTime == null) return
+    require(windows.all { (start, end) -> !pickupTime.isBefore(start) && !pickupTime.isAfter(end) }) {
+        "선택한 픽업 시간이 상품의 픽업 가능 시간을 벗어났습니다."
     }
 }

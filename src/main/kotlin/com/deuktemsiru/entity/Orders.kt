@@ -4,6 +4,7 @@ import jakarta.persistence.*
 import org.hibernate.annotations.CreationTimestamp
 import org.hibernate.annotations.UpdateTimestamp
 import java.time.LocalDateTime
+import java.time.LocalTime
 
 @Entity
 @Table(name = "orders")
@@ -28,6 +29,8 @@ class Orders(
 
     @Column(length = 10, unique = true)
     var pickupCode: String? = null,
+
+    var pickupTime: LocalTime? = null,
 
     @CreationTimestamp
     @Column(nullable = false, updatable = false)

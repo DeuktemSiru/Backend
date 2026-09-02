@@ -16,6 +16,7 @@ data class OrderItemRequest(
 data class CreateOrderRequest(
     val items: List<OrderItemRequest>,
     val paymentMethod: String? = null,  // SIRU / CARD / CASH (TBD)
+    val pickupTime: String? = null,
 )
 
 // ── 응답 공통 ─────────────────────────────────────────────────────────────────
@@ -29,6 +30,7 @@ data class PaymentInfo(
 data class CreateOrderResponse(
     val orderId: Long,
     val pickupCode: String?,
+    val pickupTime: String?,
     val status: OrderStatus,
     val totalPrice: Int,
     val payment: PaymentInfo,
@@ -37,6 +39,7 @@ data class CreateOrderResponse(
         fun from(order: Orders, payment: Payment?) = CreateOrderResponse(
             orderId = order.orderId,
             pickupCode = order.pickupCode,
+            pickupTime = order.pickupTime?.toString(),
             status = order.status,
             totalPrice = order.totalPrice,
             payment = PaymentInfo(
@@ -82,8 +85,9 @@ data class OrderDetailResponse(
     companion object {
         fun from(order: Orders, payment: Payment? = null): OrderDetailResponse {
             val firstProduct = order.items.firstOrNull()?.product
-            // B6: 주문 항목이 없을 때 NPE 방지 및 명시적 fallback 메시지 제공
-            val pickupTime = firstProduct?.let { "${it.pickupStart}~${it.pickupEnd}" } ?: "정보 없음"
+            val pickupTime = order.pickupTime?.toString()
+                ?: firstProduct?.let { "${it.pickupStart}~${it.pickupEnd}" }
+                ?: "정보 없음"
             return OrderDetailResponse(
                 orderId = order.orderId,
                 orderNumber = "#${order.orderId}",

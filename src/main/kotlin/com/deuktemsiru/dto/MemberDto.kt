@@ -86,14 +86,35 @@ data class MemberStatsResponse(
     val totalSavedAmount: Int,
     val totalCarbonSavedKg: Double,
     val totalOrders: Int,
+    val grade: String,
+    val points: Int,
+    val couponCount: Int,
 ) {
     companion object {
         fun from(stats: MemberStats) = MemberStatsResponse(
             totalSavedAmount = stats.totalSavedAmount,
             totalCarbonSavedKg = stats.totalCarbonSavedKg,
             totalOrders = stats.totalOrders,
+            grade = ecoGrade(stats.totalOrders),
+            points = stats.totalSavedAmount / 10,
+            // ponytail: 쿠폰 도메인이 생기면 실제 사용 가능 쿠폰 수로 교체한다.
+            couponCount = 0,
         )
 
-        fun empty() = MemberStatsResponse(totalSavedAmount = 0, totalCarbonSavedKg = 0.0, totalOrders = 0)
+        fun empty() = MemberStatsResponse(
+            totalSavedAmount = 0,
+            totalCarbonSavedKg = 0.0,
+            totalOrders = 0,
+            grade = ecoGrade(0),
+            points = 0,
+            couponCount = 0,
+        )
+
+        private fun ecoGrade(totalOrders: Int): String = when {
+            totalOrders >= 30 -> "FOREST"
+            totalOrders >= 15 -> "TREE"
+            totalOrders >= 5 -> "SPROUT"
+            else -> "SEEDLING"
+        }
     }
 }
